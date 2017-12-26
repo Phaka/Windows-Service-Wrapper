@@ -286,3 +286,11 @@ __pycache__/
 *.btm.cs
 *.odx.cs
 *.xsd.cs
+
+*.bin
+
+src/Wrapper/messages\.rc
+
+src/Wrapper/messages\.h
+
+*.filters
