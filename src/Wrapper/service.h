@@ -1,6 +1,6 @@
 #pragma once
 
-VOID SvcInstall(LPCTSTR pszServiceName);
+
 VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR *lpszArgv);
 VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv);
 VOID ReportSvcStatus(DWORD dwCurrentState,
