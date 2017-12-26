@@ -76,3 +76,9 @@ VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv);
 extern SERVICE_STATUS          gSvcStatus;
 extern SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 extern HANDLE                  ghSvcStopEvent;
+
+
+
+
+
+int phaka_service_execute(phaka_error_t** error);
