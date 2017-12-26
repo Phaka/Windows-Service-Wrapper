@@ -1,50 +1,12 @@
 #include "stdafx.h"
 #include "messages.h"
 #include "service.h"
-
+#include "wrapper.h"
 
 
 SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
-
-
-//
-// Purpose: 
-//   Entry point for the process
-//
-// Parameters:
-//   None
-// 
-// Return value:
-//   None
-//
-void __cdecl _tmain2(int argc, TCHAR *argv[])
-{
-	// If command-line parameter is "install", install the service. 
-	// Otherwise, the service is probably being started by the SCM.
-
-	if (lstrcmpi(argv[1], TEXT("install")) == 0)
-	{
-		SvcInstall(SVCNAME);
-		return;
-	}
-
-	// TO_DO: Add any additional services for the process to this table.
-	SERVICE_TABLE_ENTRY DispatchTable[] =
-	{
-		{ SVCNAME, (LPSERVICE_MAIN_FUNCTION)SvcMain },
-		{ NULL, NULL }
-	};
-
-	// This call returns when the service has stopped. 
-	// The process should simply terminate when the call returns.
-
-	if (!StartServiceCtrlDispatcher(DispatchTable))
-	{
-		SvcReportEvent(TEXT("StartServiceCtrlDispatcher"));
-	}
-}
 
 //
 // Purpose: 
@@ -126,9 +88,11 @@ VOID SvcInstall(LPCTSTR pszServiceName)
 VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR *lpszArgv)
 {
 	// Register the handler function for the service
+	TCHAR service_name[_MAX_PATH];
+	GetServiceName(service_name, _MAX_PATH);
 
 	gSvcStatusHandle = RegisterServiceCtrlHandler(
-		SVCNAME,
+		service_name,
 		SvcCtrlHandler);
 
 	if (!gSvcStatusHandle)
@@ -296,13 +260,16 @@ VOID SvcReportEvent(LPTSTR szFunction)
 	LPCTSTR lpszStrings[2];
 	TCHAR Buffer[80];
 
-	hEventSource = RegisterEventSource(NULL, SVCNAME);
+	TCHAR service_name[_MAX_PATH];
+	GetServiceName(service_name, _MAX_PATH);
+
+	hEventSource = RegisterEventSource(NULL, service_name);
 
 	if (NULL != hEventSource)
 	{
 		StringCchPrintf(Buffer, 80, TEXT("%s failed with %d"), szFunction, GetLastError());
 
-		lpszStrings[0] = SVCNAME;
+		lpszStrings[0] = service_name;
 		lpszStrings[1] = Buffer;
 
 		ReportEvent(hEventSource,        // event log handle

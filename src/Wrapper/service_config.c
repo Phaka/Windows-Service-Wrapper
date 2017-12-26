@@ -12,7 +12,7 @@
 // Return value:
 //   None
 //
-VOID __stdcall DoQuerySvc(LPCTSTR pszServiceName)
+VOID DoQuerySvc(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager = NULL;
 	SC_HANDLE schService = NULL;
@@ -145,7 +145,7 @@ cleanup:
 // Return value:
 //   None
 //
-VOID __stdcall DoDisableSvc(LPCTSTR pszServiceName)
+VOID DoDisableSvc(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -210,7 +210,7 @@ VOID __stdcall DoDisableSvc(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID __stdcall DoEnableSvc(LPCTSTR pszServiceName)
+VOID DoEnableSvc(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -275,7 +275,7 @@ VOID __stdcall DoEnableSvc(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID __stdcall DoUpdateSvcDesc(LPCTSTR pszServiceName)
+VOID DoUpdateSvcDesc(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -336,7 +336,7 @@ VOID __stdcall DoUpdateSvcDesc(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID __stdcall DoDeleteSvc(LPCTSTR pszServiceName)
+VOID DoDeleteSvc(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;

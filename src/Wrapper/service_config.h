@@ -1,7 +1,7 @@
 #pragma once
 
-VOID __stdcall DoQuerySvc(LPCTSTR pszServiceName);
-VOID __stdcall DoUpdateSvcDesc(LPCTSTR pszServiceName);
-VOID __stdcall DoDisableSvc(LPCTSTR pszServiceName);
-VOID __stdcall DoEnableSvc(LPCTSTR pszServiceName);
-VOID __stdcall DoDeleteSvc(LPCTSTR pszServiceName);
+VOID DoQuerySvc(LPCTSTR pszServiceName);
+VOID DoUpdateSvcDesc(LPCTSTR pszServiceName);
+VOID DoDisableSvc(LPCTSTR pszServiceName);
+VOID DoEnableSvc(LPCTSTR pszServiceName);
+VOID DoDeleteSvc(LPCTSTR pszServiceName);
