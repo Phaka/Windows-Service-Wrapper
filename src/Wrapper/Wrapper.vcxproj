@@ -179,6 +179,7 @@
     <ClCompile Include="wrapper.c" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="config.example" />
     <None Include="messages.mc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

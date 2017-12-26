@@ -1,0 +1,13 @@
+[Unit]
+Description=Example .NET Web API Application running on Ubuntu
+
+[Service]
+WorkingDirectory=/var/aspnetcore/hellomvc
+ExecStart=/usr/bin/dotnet /var/aspnetcore/hellomvc/hellomvc.dll
+Restart=always
+RestartSec=10  
+SyslogIdentifier=dotnet-example
+User=www-data
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+

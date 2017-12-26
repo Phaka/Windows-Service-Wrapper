@@ -7,6 +7,38 @@ SERVICE_STATUS          gSvcStatus;
 SERVICE_STATUS_HANDLE   gSvcStatusHandle;
 HANDLE                  ghSvcStopEvent = NULL;
 
+// Inspired from http://stackoverflow.com/a/15281070/1529139
+// and http://stackoverflow.com/q/40059902/1529139
+BOOL SendConsoleCtrlEvent(DWORD dwProcessId, DWORD dwCtrlEvent)
+{
+	BOOL success = FALSE;
+	DWORD thisConsoleId = GetCurrentProcessId();
+	// Leave current console if it exists
+	// (otherwise AttachConsole will return ERROR_ACCESS_DENIED)
+	BOOL consoleDetached = (FreeConsole() != FALSE);
+
+	if (AttachConsole(dwProcessId) != FALSE)
+	{
+		SetConsoleCtrlHandler(NULL, TRUE);
+		success = (GenerateConsoleCtrlEvent(dwCtrlEvent, 0) != FALSE);
+		FreeConsole();
+	}
+
+	if (consoleDetached)
+	{
+		// Create a new console if previous was deleted by OS
+		if (AttachConsole(thisConsoleId) == FALSE)
+		{
+			int errorCode = GetLastError();
+			if (errorCode == 31) // 31=ERROR_GEN_FAILURE
+			{
+				AllocConsole();
+			}
+		}
+	}
+	return success;
+}
+
 //
 // Purpose: 
 //   Entry point for the service
@@ -65,19 +97,14 @@ VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR *lpszArgv)
 //
 VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv)
 {
-	// TO_DO: Declare and set any required variables.
-	//   Be sure to periodically call ReportSvcStatus() with 
-	//   SERVICE_START_PENDING. If initialization fails, call
-	//   ReportSvcStatus with SERVICE_STOPPED.
+	STARTUPINFO si;
+	PROCESS_INFORMATION pi;
 
-	// Create an event. The control handler function, SvcCtrlHandler,
-	// signals this event when it receives the stop control code.
+	ZeroMemory(&si, sizeof(si));
+	si.cb = sizeof(si);
+	ZeroMemory(&pi, sizeof(pi));
 
-	ghSvcStopEvent = CreateEvent(
-		NULL,    // default security attributes
-		TRUE,    // manual reset event
-		FALSE,   // not signaled
-		NULL);   // no name
+	ghSvcStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);   
 
 	if (ghSvcStopEvent == NULL)
 	{
@@ -85,21 +112,70 @@ VOID SvcInit(DWORD dwArgc, LPTSTR *lpszArgv)
 		return;
 	}
 
-	// Report running status when initialization is complete.
+	if (!CreateProcess(NULL,   
+		"sample1.exe",        
+		NULL,           
+		NULL,           
+		FALSE,          
+		0,              
+		NULL,           
+		NULL,           
+		&si,            
+		&pi)           
+		)
+	{
+		ReportSvcStatus(SERVICE_STOPPED, GetLastError(), 0);
+		return;
+	}
 
 	ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
 
+	WaitForSingleObject(ghSvcStopEvent, INFINITE);
+
 	// TO_DO: Perform work until service stops.
+	//HANDLE ghEvents[2];
+	//ghEvents[0] = pi.hProcess;
+	//ghEvents[1] = ghSvcStopEvent;
+	//DWORD dwEvent = WaitForMultipleObjects(
+	//	2,           // number of objects in array
+	//	ghEvents,    // array of objects
+	//	FALSE,       // wait for any object
+	//	INFINITE);       // five-second wait
 
-	while (1)
-	{
-		// Check whether to stop the service.
+	//switch (dwEvent)
+	//{
+	//case WAIT_OBJECT_0 + 0:
+	//	printf("The process terminated. We're done.\n");
+	//	break;
 
-		WaitForSingleObject(ghSvcStopEvent, INFINITE);
+	//case WAIT_OBJECT_0 + 1:
+	//	printf("Received a request to stop the service.\n");
+	//	SendConsoleCtrlEvent(pi.dwProcessId, CTRL_C_EVENT);
 
-		ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
-		return;
-	}
+	//	DWORD dwStatus;
+	//	do
+	//	{
+	//		ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+	//		dwStatus = WaitForSingleObject(pi.hProcess, 1000);
+	//	} while (dwStatus == WAIT_TIMEOUT);
+
+	//	break;
+
+	//case WAIT_TIMEOUT:
+	//	printf("Wait timed out.\n");
+	//	break;
+
+	//default:
+	//	printf("Wait error: %d\n", GetLastError());
+	//	ExitProcess(0);
+	//}
+	
+	ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
+
+	if(pi.hProcess)
+	CloseHandle(pi.hProcess);
+	if(pi.hThread)
+	CloseHandle(pi.hThread);
 }
 
 //
@@ -120,23 +196,21 @@ VOID ReportSvcStatus(DWORD dwCurrentState,
 	DWORD dwWaitHint)
 {
 	static DWORD dwCheckPoint = 1;
-
-	// Fill in the SERVICE_STATUS structure.
-
 	gSvcStatus.dwCurrentState = dwCurrentState;
 	gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
 	gSvcStatus.dwWaitHint = dwWaitHint;
 
 	if (dwCurrentState == SERVICE_START_PENDING)
 		gSvcStatus.dwControlsAccepted = 0;
-	else gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+	else 
+		gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
 
 	if ((dwCurrentState == SERVICE_RUNNING) ||
 		(dwCurrentState == SERVICE_STOPPED))
 		gSvcStatus.dwCheckPoint = 0;
+
 	else gSvcStatus.dwCheckPoint = dwCheckPoint++;
 
-	// Report the status of the service to the SCM.
 	SetServiceStatus(gSvcStatusHandle, &gSvcStatus);
 }
 
