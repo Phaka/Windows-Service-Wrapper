@@ -24,6 +24,9 @@
     <ClInclude Include="wrapper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="wrapper.c">
@@ -32,8 +35,88 @@
     <ClCompile Include="stdafx.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="PhCreateDirectory.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PhSetEnvironmentVariables.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PhPathChangeExtension.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PhGetLogPathSetting.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PhGetDirectoryName.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PhExecuteChildProcess.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PhGetWorkingDirectory.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GetCommandLineSetting.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="OpenLogFile.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GetErrorMessage.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoRun.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GetApplicationName.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PrintLogo.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DisplayUsage.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoInstallService.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoDeleteService.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ReportSvcStatus.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SvcReportEvent.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoQueryService.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoDescribeService.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoDisableService.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DoEnableService.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SvcCtrlHandler.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SvcInit.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SvcMain.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="wrapper.cfg" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Resource.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>
