@@ -1,5 +1,5 @@
 #include "stdafx.h"
-#include "service_control.h"
+#include "service_config.h"
 
 BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService);
 
@@ -13,7 +13,7 @@ BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService);
 // Return value:
 //   None
 //
-VOID  DoStartSvcEx(LPCTSTR pszServiceName)
+VOID  wrapper_service_start(LPCTSTR name)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -41,7 +41,7 @@ VOID  DoStartSvcEx(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,         // SCM database 
-		pszServiceName,            // name of service 
+		name,            // name of service 
 		SERVICE_ALL_ACCESS);  // full access 
 
 	if (schService == NULL)
@@ -50,8 +50,6 @@ VOID  DoStartSvcEx(LPCTSTR pszServiceName)
 		CloseServiceHandle(schSCManager);
 		return;
 	}
-
-	// Check the status in case the service is not stopped. 
 
 	if (!QueryServiceStatusEx(
 		schService,                     // handle to service 
@@ -65,9 +63,6 @@ VOID  DoStartSvcEx(LPCTSTR pszServiceName)
 		CloseServiceHandle(schSCManager);
 		return;
 	}
-
-	// Check if the service is already running. It would be possible 
-	// to stop the service here, but for simplicity this example just returns. 
 
 	if (ssStatus.dwCurrentState != SERVICE_STOPPED && ssStatus.dwCurrentState != SERVICE_STOP_PENDING)
 	{
@@ -242,7 +237,7 @@ VOID  DoStartSvcEx(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID  DoUpdateSvcDaclEx(LPCTSTR pszServiceName)
+VOID  wrapper_service_dacl(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -388,7 +383,7 @@ dacl_cleanup:
 // Return value:
 //   None
 //
-VOID  DoStopSvcEx(LPCTSTR pszServiceName)
+VOID  wrapper_service_stop(LPCTSTR name)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -416,7 +411,7 @@ VOID  DoStopSvcEx(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,         // SCM database 
-		pszServiceName,            // name of service 
+		name,            // name of service 
 		SERVICE_STOP |
 		SERVICE_QUERY_STATUS |
 		SERVICE_ENUMERATE_DEPENDENTS);
@@ -536,7 +531,7 @@ stop_cleanup:
 	CloseServiceHandle(schSCManager);
 }
 
-BOOL  StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService)
+BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService)
 {
 	DWORD i;
 	DWORD dwBytesNeeded;

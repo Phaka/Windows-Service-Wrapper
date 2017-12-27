@@ -1,6 +1,30 @@
 #include "stdafx.h"
 #include "messages.h"
 #include "service_config.h"
+#include "wrapper-log.h"
+#include "service.h"
+
+void wrapper_service_run(LPTSTR name)
+{
+	TCHAR module_path[_MAX_PATH];
+	GetModuleFileName(NULL, module_path, _MAX_PATH);
+	PathCchRenameExtension(module_path, sizeof(module_path) / sizeof(module_path[0]), _T(".log"));
+	wrapper_log_set_handler(wrapper_log_file_handler, module_path);
+
+	WRAPPER_INFO(_T("Starting Service"));
+	SERVICE_TABLE_ENTRY DispatchTable[] =
+	{
+		{ name, (LPSERVICE_MAIN_FUNCTION)SvcMain },
+		{ NULL, NULL }
+	};
+
+	if (!StartServiceCtrlDispatcher(DispatchTable))
+	{
+		WRAPPER_ERROR(_T("Failed to start service"));
+		SvcReportEvent(TEXT("StartServiceCtrlDispatcher"));
+	}
+	WRAPPER_INFO(_T("Done"));
+}
 
 //
 // Purpose: 
@@ -12,7 +36,7 @@
 // Return value:
 //   None
 //
-VOID SvcInstall(LPCTSTR pszServiceName)
+VOID wrapper_service_install(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -76,7 +100,7 @@ VOID SvcInstall(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID DoQuerySvc(LPCTSTR pszServiceName)
+VOID wrapper_service_query(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager = NULL;
 	SC_HANDLE schService = NULL;
@@ -209,7 +233,7 @@ cleanup:
 // Return value:
 //   None
 //
-VOID DoDisableSvc(LPCTSTR pszServiceName)
+VOID wrapper_service_disable(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -274,7 +298,7 @@ VOID DoDisableSvc(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID DoEnableSvc(LPCTSTR pszServiceName)
+VOID wrapper_service_enable(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -339,7 +363,7 @@ VOID DoEnableSvc(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID DoUpdateSvcDesc(LPCTSTR pszServiceName)
+VOID wrapper_service_update(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -400,7 +424,7 @@ VOID DoUpdateSvcDesc(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID DoDeleteSvc(LPCTSTR pszServiceName)
+VOID wrapper_service_delete(LPCTSTR pszServiceName)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;

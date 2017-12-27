@@ -161,7 +161,6 @@
     <ClInclude Include="messages.h" />
     <ClInclude Include="service.h" />
     <ClInclude Include="service_config.h" />
-    <ClInclude Include="service_control.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="wrapper-error.h" />
@@ -187,6 +186,12 @@
   <ItemGroup>
     <None Include="config.example" />
     <None Include="messages.mc" />
+    <None Include="service_config-dependent.tt">
+      <DependentUpon>service_config.h</DependentUpon>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="messages.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
