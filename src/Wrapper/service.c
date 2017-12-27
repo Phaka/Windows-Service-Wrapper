@@ -14,7 +14,7 @@ int wrapper_service_init(wrapper_config_t* config, wrapper_error_t** error);
 int wrapper_service_report_status(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint,
                                   wrapper_config_t* config, wrapper_error_t** error);
 
-SERVICE_STATUS service_status;
+
 SERVICE_STATUS_HANDLE status_handle;
 TCHAR* stop_event_name = _T("PHAKA_WINDOWS_SERVICE_STOP_EVENT");
 
@@ -157,7 +157,7 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 
 	if (SUCCEEDED(hr))
 	{
-		wrapper_service_report_status(SERVICE_START_PENDING, NO_ERROR, 3000, config, &error);
+
 		wrapper_service_init(config, &error);
 	}
 	else
@@ -393,6 +393,8 @@ int wrapper_service_init(wrapper_config_t* config, wrapper_error_t** error)
 	DWORD last_error;
 	HANDLE process = NULL;
 
+	wrapper_service_report_status(SERVICE_START_PENDING, NO_ERROR, 3000, config, error);
+
 	if (SUCCEEDED(hr))
 	{
 		HANDLE stop_event = CreateEvent(NULL, TRUE, FALSE, stop_event_name);
@@ -483,6 +485,10 @@ int wrapper_service_report_status(DWORD state,
                                   wrapper_error_t** error)
 {
 	static DWORD dwCheckPoint = 1;
+
+	SERVICE_STATUS service_status = {0};
+
+	service_status.dwServiceSpecificExitCode = 0;
 	service_status.dwCurrentState = state;
 	service_status.dwWin32ExitCode = exit_code;
 	service_status.dwWaitHint = timeout;
@@ -537,22 +543,30 @@ VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl)
 	{
 	case SERVICE_CONTROL_STOP:
 		{
+			wrapper_error_t* error = NULL;
 			HANDLE stop_event = OpenEvent(EVENT_ALL_ACCESS, TRUE, stop_event_name);
 			if (stop_event)
 			{
-				WRAPPER_INFO("Received stop request from the service manager. Setting event so that processes can stop");
-				SetEvent(stop_event);
+				WRAPPER_INFO(_T("Received stop request from the service manager."));
+				if(SetEvent(stop_event))
+				{
+					WRAPPER_INFO(_T("Succesfully set the event '%s'."), stop_event_name);
+				}
+				else
+				{
+					error = wrapper_error_from_system(GetLastError(), _T("Failed to set the event '%s'. The service may not stop."), stop_event_name);
+				}
 				CloseHandle(stop_event);
 			}
 			else
 			{
-				wrapper_error_t* error = wrapper_error_from_system(GetLastError(), _T("Failed to open event named '%s'"),
-				                                                   stop_event_name);
-				if (error)
-				{
-					wrapper_error_log(error);
-					wrapper_error_free(error);
-				}
+				error = wrapper_error_from_system(GetLastError(), _T("Failed to set the event '%s'."), stop_event_name);
+			}
+
+			if (error)
+			{
+				wrapper_error_log(error);
+				wrapper_error_free(error);
 			}
 		}
 		break;
