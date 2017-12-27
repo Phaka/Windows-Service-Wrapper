@@ -163,6 +163,7 @@
     <ClInclude Include="service_config.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="wrapper-command.h" />
     <ClInclude Include="wrapper-config.h" />
     <ClInclude Include="wrapper-error.h" />
     <ClInclude Include="wrapper-log.h" />
@@ -180,6 +181,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="main.c" />
+    <ClCompile Include="wrapper-command.c" />
     <ClCompile Include="wrapper-config.c" />
     <ClCompile Include="wrapper-error.c" />
     <ClCompile Include="wrapper-log.c" />
