@@ -11,7 +11,8 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR *lpszArgv);
 VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl);
 
 int wrapper_service_init(DWORD dwArgc, LPTSTR *lpszArgv, wrapper_config_t* config, wrapper_error_t** error);
-VOID wrapper_service_report_status(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint);
+int wrapper_service_report_status(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint,
+                                  wrapper_config_t* config, wrapper_error_t** error);
 
 SERVICE_STATUS service_status;
 SERVICE_STATUS_HANDLE status_handle;
@@ -100,6 +101,7 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 	{
 		if (!wrapper_config_get_path(configuration_path, _MAX_PATH, &error))
 		{
+			wrapper_error_log(error);
 			hr = E_FAIL;
 		}
 	}
@@ -116,12 +118,21 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 	TCHAR* service_name = NULL;
 	if (SUCCEEDED(hr))
 	{
+		WRAPPER_INFO(_T("Reading configuration '%s'"), configuration_path);
 		if (!wrapper_config_read(configuration_path, config, &error))
 		{
+			wrapper_error_log(error);
 			hr = E_FAIL;
 		}
 		else
 		{
+			WRAPPER_INFO(_T("Configuration Settings:"));
+			WRAPPER_INFO(_T("  %-20s: %s"), _T("Name"), config->name);
+			WRAPPER_INFO(_T("  %-20s: %s"), _T("Title"), config->title);
+			WRAPPER_INFO(_T("  %-20s: %s"), _T("Description"), config->description);
+			WRAPPER_INFO(_T("  %-20s: %s"), _T("Working Directory"), config->working_directory);
+			WRAPPER_INFO(_T("  %-20s: %s"), _T("Command Line"), config->command_line);
+			WRAPPER_INFO(_T(""));
 			service_name = config->name;
 		}
 	}
@@ -134,27 +145,205 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 		{
 			DWORD last_error = GetLastError();
 			error = wrapper_error_from_system(last_error, _T("Failed to register the control handler for service '%s'"), service_name);
+			wrapper_error_log(error);
 			hr = HRESULT_FROM_WIN32(last_error);
+		}
+		else
+		{
+			WRAPPER_INFO(_T("Succesfully created a service control handler for service '%s'"), service_name);
 		}
 	}
 
 	if (SUCCEEDED(hr))
 	{
-		WRAPPER_INFO(_T("Succesfully created a service control handler for service '%s'"), service_name);
 		service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 		service_status.dwServiceSpecificExitCode = 0;
 
-		wrapper_service_report_status(SERVICE_START_PENDING, NO_ERROR, 3000);
+		wrapper_service_report_status(SERVICE_START_PENDING, NO_ERROR, 3000, config, &error);
 		wrapper_service_init(dwArgc, lpszArgv, config, &error);
 	}
 	else
 	{
-		wrapper_service_report_status(SERVICE_STOPPED, NO_ERROR, 0);
+		wrapper_error_log(error);
+		wrapper_service_report_status(SERVICE_STOPPED, NO_ERROR, 0, config, &error);
 	}
 
 	wrapper_free(configuration_path);
 	wrapper_error_free(error);
 	wrapper_config_free(config);
+}
+
+HANDLE wrapper_create_child_process(wrapper_config_t* config, wrapper_error_t** error)
+{
+	HRESULT hr = S_OK;
+	STARTUPINFO *startupinfo = NULL;
+	PROCESS_INFORMATION *process_information = NULL;
+
+	if (SUCCEEDED(hr))
+	{
+		process_information = wrapper_allocate(sizeof(*process_information));
+		if (!process_information)
+		{
+			hr = E_OUTOFMEMORY;
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(hr, _T("Failed to allocate memory for the process information"));
+			}
+		}
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		startupinfo = wrapper_allocate(sizeof(*startupinfo));
+		if (!startupinfo)
+		{
+			hr = E_OUTOFMEMORY;
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(hr, _T("Failed to allocate memory for the process startup information"));
+			}
+		}
+	}
+
+	TCHAR* command_line = NULL;
+	const int command_line_max_size = 32768;
+	if (SUCCEEDED(hr))
+	{
+		command_line = wrapper_allocate_string(command_line_max_size);
+		if (!command_line)
+		{
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(E_OUTOFMEMORY, _T("Failed to allocate a buffer for the command line"));
+			}
+			hr = E_OUTOFMEMORY;
+		}
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = StringCbCopy(command_line, command_line_max_size, config->command_line);
+		if (FAILED(hr))
+		{
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(hr, _T("Failed to copy the command line from the configuration file to a local buffer"));
+			}
+		}
+	}
+	
+	if (SUCCEEDED(hr))
+	{
+		startupinfo->cb = sizeof startupinfo;
+		startupinfo->dwFlags |= STARTF_USESTDHANDLES;
+
+		WRAPPER_INFO(_T("Starting process with command line '%s'"), command_line);
+		
+		if (!CreateProcess(NULL,
+		                   command_line,
+		                   NULL,
+		                   NULL,
+		                   FALSE,
+		                   0,
+		                   NULL,
+		                   NULL,
+		                   startupinfo,
+		                   process_information)
+		)
+		{
+			DWORD last_error = GetLastError();
+			if (error)
+			{
+				*error = wrapper_error_from_system(last_error, _T("Failed to start the process with command line '%s'"), command_line);
+			}
+			hr = HRESULT_FROM_WIN32(last_error);
+		}
+	}
+
+	HANDLE process = NULL;
+
+	wrapper_free(command_line);
+	wrapper_free(startupinfo);
+
+	if (process_information)
+	{
+		process = process_information->hProcess;
+
+		if (process_information->hThread)
+		{
+			CloseHandle(process_information->hThread);
+		}
+		wrapper_free(process_information);
+	}
+
+	return process;
+}
+
+int wrapper_wait(HANDLE process, wrapper_config_t* config, wrapper_error_t** error)
+{
+	DWORD last_error;
+	HRESULT hr = S_OK;
+	HANDLE events[2];
+	events[0] = process;
+	events[1] = stop_event;
+
+	const unsigned count = sizeof(events)/sizeof(events[0]);
+	const int wait_all = FALSE;
+
+	DWORD event = WaitForMultipleObjects(count, events, wait_all, INFINITE); 
+	switch (event)
+	{
+	case WAIT_OBJECT_0 + 0:
+		// TODO: Display more information about the state of the process, like whether it was killed, crashed or terminated gracefully 
+		WRAPPER_INFO(_T("The child process has ended."));
+		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0, config, error);
+		break;
+
+	case WAIT_OBJECT_0 + 1:
+		WRAPPER_INFO(_T("A request was received to stop the service. Sending a CTRL+C signal to the child process."));
+		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0, config, error);
+		DWORD pid = GetProcessId(process);
+		SendConsoleCtrlEvent(pid, CTRL_C_EVENT);
+
+		// TODO: Should we forcefully terminate the process if it doesn't respond in say 10 minutes?
+		const int timeout = 5000;
+		DWORD status;
+		do
+		{
+			wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, timeout, config, error);
+			WRAPPER_INFO(_T("Waiting up to %dms for the child process to termimate."), timeout);
+			status = WaitForSingleObject(process, timeout);
+		} while (status == WAIT_TIMEOUT);
+		WRAPPER_INFO(_T("The child process succesfully termimated."));
+		break;
+
+	case WAIT_TIMEOUT:
+		WRAPPER_WARNING(_T("Wait timed out while waiting for the process to terminate or for the stop event.\n"));
+		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0, config, error);
+		hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+		if (error)
+		{
+			*error = wrapper_error_from_hresult(hr, _T("Failed to wait either for the process to terminate or for the stop event to be raised"));
+		}
+		break;
+
+	default:
+		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0, config, error);
+		last_error = GetLastError();
+		if (error)
+		{
+			*error = wrapper_error_from_system(last_error, _T("Failed to wait either for the process to terminate or for the stop event to be raised"));
+		}
+		hr = HRESULT_FROM_WIN32(last_error);
+		break;
+	}
+
+	if (FAILED(hr))
+	{
+		return 0;
+	}
+
+	return 1;
 }
 
 //
@@ -173,168 +362,76 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 int wrapper_service_init(DWORD dwArgc, LPTSTR* lpszArgv, wrapper_config_t* config, wrapper_error_t** error)
 {
 	HRESULT hr = S_OK;
-
-	SECURITY_ATTRIBUTES saAttr = {0};
-	STARTUPINFO startupinfo = {0};
-	PROCESS_INFORMATION process_information = {0};
-
-	TCHAR* service_name = config->name;
-
-	ZeroMemory(&startupinfo, sizeof startupinfo);
-	ZeroMemory(&process_information, sizeof process_information);
-
-	startupinfo.cb = sizeof startupinfo;
-	startupinfo.dwFlags |= STARTF_USESTDHANDLES;
+	DWORD last_error;
+	HANDLE process = NULL;
 
 	if (SUCCEEDED(hr))
 	{
 		stop_event = CreateEvent(NULL, TRUE, FALSE, NULL);
 		if (stop_event == NULL)
 		{
-			DWORD last_error = GetLastError();
+			last_error = GetLastError();
 			if (error)
 			{
 				*error = wrapper_error_from_system(
 					last_error, _T("Failed to register the event for service '%s' that would be used to say the process has stopped."),
-					service_name);
+					config->name);
 			}
 			hr = HRESULT_FROM_WIN32(last_error);
 		}
 	}
 
-	TCHAR* command_line = NULL;
-	if (SUCCEEDED(hr))
-	{
-		command_line = wrapper_allocate_string(4096);
-		if (!command_line)
-		{
-			if (error)
-			{
-				*error = wrapper_error_from_hresult(E_OUTOFMEMORY, _T("Failed to allocate a buffer for the command line"));
-			}
-			hr = E_OUTOFMEMORY;
-		}
-	}
 
 	if (SUCCEEDED(hr))
 	{
-		hr = StringCbCopy(command_line, 4096, config->command_line);
-		if (FAILED(hr))
+		process = wrapper_create_child_process(config, error);
+		if (process)
 		{
-			if (error)
-			{
-				*error = wrapper_error_from_hresult(hr, _T("Failed to copy the command line from the configuration file to a local buffer"));
-			}
-		}
-	}
-	
-	if (SUCCEEDED(hr))
-	{
-		WRAPPER_INFO(_T("Starting process with command line '%s'"), command_line);
-		if (!CreateProcess(NULL,
-			command_line,
-			NULL,
-			NULL,
-			FALSE,
-			0,
-			NULL,
-			NULL,
-			&startupinfo,
-			&process_information)
-			)
-		{
-			DWORD last_error = GetLastError();
-			if (error)
-			{
-				*error = wrapper_error_from_system(last_error, _T("Failed to start the process '%s'"), _T("sample1.exe"));
-			}
-			hr = HRESULT_FROM_WIN32(last_error);
-		}
-		else 
-		{
+			DWORD pid = GetProcessId(process);
 			// TODO: Display more information that could help the user diagnose when there is a failure to execute the process 
-			WRAPPER_INFO(_T("Successfully started process with command line '%s'"), command_line);
-			WRAPPER_INFO(_T("  Process ID: %d (0x%08x)"), process_information.dwProcessId, process_information.dwProcessId);
-			
-			wrapper_service_report_status(SERVICE_RUNNING, NO_ERROR, 0);
+			WRAPPER_INFO(_T("Successfully started process with command line '%s'"), config->command_line);
+			WRAPPER_INFO(_T("  Process ID: %d (0x%08x)"), pid, pid);
+
+			wrapper_service_report_status(SERVICE_RUNNING, NO_ERROR, 0, config, error);
+		}
+		else
+		{
+			if (error)
+			{
+				wrapper_error_log(*error);
+			}
+			hr = E_FAIL;
 		}
 	}
 
 	if (SUCCEEDED(hr))
 	{
-		HANDLE events[2];
-		events[0] = process_information.hProcess;
-		events[1] = stop_event;
-
-		unsigned count = sizeof(events)/sizeof(events[0]);
-		int wait_all = FALSE;
-
-		DWORD event = WaitForMultipleObjects(count, events, wait_all, INFINITE); 
-		
-		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0);
-
-		switch (event)
+		if(!wrapper_wait(process, config, error))
 		{
-		case WAIT_OBJECT_0 + 0:
-			// TODO: Display more information about the state of the process, like whether it was killed, crashed or terminated gracefully 
-			WRAPPER_INFO(_T("The child process has ended."));
-			break;
-
-		case WAIT_OBJECT_0 + 1:
-			WRAPPER_INFO(_T("A request was received to stop the service. Sending a CTRL+C signal to the child process."));
-			SendConsoleCtrlEvent(process_information.dwProcessId, CTRL_C_EVENT);
-
-			// TODO: Should we forcefully terminate the process if it doesn't respond in say 10 minutes?
-			const int timeout = 5000;
-			DWORD status;
-			do
-			{
-				wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, timeout);
-				WRAPPER_INFO(_T("Waiting up to %dms for the child process to termimate."), timeout);
-				status = WaitForSingleObject(process_information.hProcess, timeout);
-			} while (status == WAIT_TIMEOUT);
-			WRAPPER_INFO(_T("The child process succesfully termimated."));
-			break;
-
-		case WAIT_TIMEOUT:
-			WRAPPER_WARNING(_T("Wait timed out while waiting for the process to terminate or for the stop event.\n"));
-			hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
 			if (error)
 			{
-				*error = wrapper_error_from_hresult(hr, _T("Failed to wait either for the process to terminate or for the stop event to be raised"));
+				wrapper_error_log(*error);
 			}
-			hr = HRESULT_FROM_WIN32(hr);
-			break;
-
-		default:
-			DWORD last_error = GetLastError();
-			if (error)
-			{
-				*error = wrapper_error_from_system(last_error, _T("Failed to wait either for the process to terminate or for the stop event to be raised"));
-			}
-			hr = HRESULT_FROM_WIN32(last_error);
-			break;
+			hr = E_FAIL;
 		}
 	}
 
 	if (error && *error)
 	{
 		const long code = (*error)->code;
-		wrapper_service_report_status(SERVICE_STOPPED, code, 0);
 		WRAPPER_INFO(_T("The windows service stopped with errors."));
+		wrapper_service_report_status(SERVICE_STOPPED, code, 0, config, error);
 	}
 	else
 	{
-		wrapper_service_report_status(SERVICE_STOPPED, NO_ERROR, 0);
 		WRAPPER_INFO(_T("The windows service stopped succesfully."));
+		wrapper_service_report_status(SERVICE_STOPPED, NO_ERROR, 0, config, error);
 	}
 
-	if (process_information.hProcess)
-		CloseHandle(process_information.hProcess);
-
-	if (process_information.hThread)
-		CloseHandle(process_information.hThread);
-
+	if (process)
+	{
+		CloseHandle(process);
+	}
 	return 1;
 }
 
@@ -343,35 +440,37 @@ int wrapper_service_init(DWORD dwArgc, LPTSTR* lpszArgv, wrapper_config_t* confi
 //   Sets the current service status and reports it to the SCM.
 //
 // Parameters:
-//   dwCurrentState - The current state (see SERVICE_STATUS)
-//   dwWin32ExitCode - The system error code
-//   dwWaitHint - Estimated time for pending operation, 
+//   state - The current state (see SERVICE_STATUS)
+//   exit_code - The system error code
+//   timeout - Estimated time for pending operation, 
 //     in milliseconds
 // 
 // Return value:
 //   None
 //
-VOID wrapper_service_report_status(DWORD dwCurrentState,
-                     DWORD dwWin32ExitCode,
-                     DWORD dwWaitHint)
+int wrapper_service_report_status(DWORD state,
+                                  DWORD exit_code,
+                                  DWORD timeout,
+                                  wrapper_config_t* config,
+                                  wrapper_error_t** error)
 {
 	static DWORD dwCheckPoint = 1;
-	service_status.dwCurrentState = dwCurrentState;
-	service_status.dwWin32ExitCode = dwWin32ExitCode;
-	service_status.dwWaitHint = dwWaitHint;
+	service_status.dwCurrentState = state;
+	service_status.dwWin32ExitCode = exit_code;
+	service_status.dwWaitHint = timeout;
 
-	if (dwCurrentState == SERVICE_START_PENDING)
+	if (state == SERVICE_START_PENDING)
 		service_status.dwControlsAccepted = 0;
 	else
 		service_status.dwControlsAccepted = SERVICE_ACCEPT_STOP;
 
-	if (dwCurrentState == SERVICE_RUNNING ||
-		dwCurrentState == SERVICE_STOPPED)
+	if (state == SERVICE_RUNNING ||
+		state == SERVICE_STOPPED)
 		service_status.dwCheckPoint = 0;
 	else
 		service_status.dwCheckPoint = dwCheckPoint++;
 
-	const TCHAR* status_text = wrapper_service_get_status_text(dwCurrentState);
+	const TCHAR* status_text = wrapper_service_get_status_text(state);
 	WRAPPER_INFO(_T("Setting the status of the service to '%s'"), status_text);
 	if (SetServiceStatus(status_handle, &service_status)) 
 	{
@@ -380,15 +479,16 @@ VOID wrapper_service_report_status(DWORD dwCurrentState,
 	else
 	{
 		DWORD last_error = GetLastError();
-		wrapper_error_t* error = wrapper_error_from_system(
-			last_error, _T("Failed to set the status of the service to '%s'"),
-			status_text);
 		if (error)
 		{
-			wrapper_error_log(error);
-			wrapper_error_free(error);
+			*error = wrapper_error_from_system(
+				last_error, _T("Failed to set the status of the service to '%s'"),
+				status_text);
 		}
+
+		return 0;
 	}
+	return 1;
 }
 
 //
@@ -404,17 +504,11 @@ VOID wrapper_service_report_status(DWORD dwCurrentState,
 //
 VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl)
 {
-	// Handle the requested control code. 
-
 	switch (dwCtrl)
 	{
 	case SERVICE_CONTROL_STOP:
-		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0);
-
-		// Signal the service to stop.
-
 		SetEvent(stop_event);
-		wrapper_service_report_status(service_status.dwCurrentState, NO_ERROR, 0);
+		break;
 
 	case SERVICE_CONTROL_INTERROGATE:
 		break;
