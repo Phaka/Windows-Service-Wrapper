@@ -4,7 +4,7 @@
 #include "wrapper-log.h"
 #include "service.h"
 
-void wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
 {
 	TCHAR module_path[_MAX_PATH];
 	GetModuleFileName(NULL, module_path, _MAX_PATH);
@@ -24,6 +24,8 @@ void wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
 		SvcReportEvent(TEXT("StartServiceCtrlDispatcher"));
 	}
 	WRAPPER_INFO(_T("Done"));
+
+	return 1;
 }
 
 //
@@ -36,7 +38,7 @@ void wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-VOID wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -88,6 +90,8 @@ VOID wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
+
+	return 1;
 }
 
 //
@@ -100,7 +104,7 @@ VOID wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-VOID wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager = NULL;
 	SC_HANDLE schService = NULL;
@@ -221,6 +225,8 @@ VOID wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 cleanup:
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
+
+	return 1;
 }
 
 //
@@ -233,7 +239,7 @@ cleanup:
 // Return value:
 //   None
 //
-VOID wrapper_service_disable(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_disable(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -286,6 +292,8 @@ VOID wrapper_service_disable(wrapper_config_t* config, wrapper_error_t** error)
 
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
+
+	return 1;
 }
 
 //
@@ -298,7 +306,7 @@ VOID wrapper_service_disable(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-VOID wrapper_service_enable(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_enable(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -351,6 +359,8 @@ VOID wrapper_service_enable(wrapper_config_t* config, wrapper_error_t** error)
 
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
+
+	return 1;
 }
 
 //
@@ -363,7 +373,7 @@ VOID wrapper_service_enable(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-VOID wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -412,6 +422,8 @@ VOID wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
 
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
+
+	return 1;
 }
 
 //
@@ -424,7 +436,7 @@ VOID wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-VOID wrapper_service_delete(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_delete(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -467,4 +479,6 @@ VOID wrapper_service_delete(wrapper_config_t* config, wrapper_error_t** error)
 
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
+
+	return 1;
 }
