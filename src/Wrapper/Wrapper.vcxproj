@@ -166,11 +166,12 @@
     <ClInclude Include="wrapper-command.h" />
     <ClInclude Include="wrapper-config.h" />
     <ClInclude Include="wrapper-error.h" />
+    <ClInclude Include="wrapper-help.h" />
     <ClInclude Include="wrapper-log.h" />
+    <ClInclude Include="wrapper-memory.h" />
     <ClInclude Include="wrapper.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="application.c" />
     <ClCompile Include="service.c" />
     <ClCompile Include="service_config.c" />
     <ClCompile Include="service_control.c" />
@@ -184,15 +185,14 @@
     <ClCompile Include="wrapper-command.c" />
     <ClCompile Include="wrapper-config.c" />
     <ClCompile Include="wrapper-error.c" />
+    <ClCompile Include="wrapper-help.c" />
     <ClCompile Include="wrapper-log.c" />
+    <ClCompile Include="wrapper-memory.c" />
     <ClCompile Include="wrapper.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="config.example" />
     <None Include="messages.mc" />
-    <None Include="service_config-dependent.tt">
-      <DependentUpon>service_config.h</DependentUpon>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="messages.rc" />

@@ -11,5 +11,4 @@ typedef struct wrapper_command_t
 	wrapper_command_func func;
 } wrapper_command_t;
 
-
-
+int wrapper_command_execute(wrapper_command_t* commands, const TCHAR* command_text, wrapper_config_t* config, wrapper_error_t** error);
