@@ -2,17 +2,22 @@
 // Licensed under the MIT license. See LICENSE in the project root for license information.
 
 #include "stdafx.h"
-#include "messages.h"
-#include "service.h"
-#include "wrapper.h"
 #include "wrapper-error.h"
+#include "wrapper-memory.h"
 #include "wrapper-log.h"
+#include "service_config.h"
 
-SERVICE_STATUS gSvcStatus;
-SERVICE_STATUS_HANDLE gSvcStatusHandle;
-HANDLE ghSvcStopEvent = NULL;
+VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR *lpszArgv);
+VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl);
 
-const TCHAR* wrapper_service_get_status_text(DWORD status)
+int wrapper_service_init(DWORD dwArgc, LPTSTR *lpszArgv, wrapper_config_t* config, wrapper_error_t** error);
+VOID wrapper_service_report_status(DWORD dwCurrentState, DWORD dwWin32ExitCode, DWORD dwWaitHint);
+
+SERVICE_STATUS service_status;
+SERVICE_STATUS_HANDLE status_handle;
+HANDLE stop_event = NULL;
+
+const TCHAR* wrapper_service_get_status_text(const unsigned long status)
 {
 	switch (status)
 	{
@@ -80,47 +85,76 @@ BOOL SendConsoleCtrlEvent(DWORD dwProcessId, DWORD dwCtrlEvent)
 // Return value:
 //   None.
 //
-VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR* lpszArgv)
+VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 {
-	// Register the handler function for the service
-	TCHAR service_name[_MAX_PATH];
-	GetServiceName(service_name, _MAX_PATH);
-
-	WRAPPER_INFO(_T("Service Name: %s"), service_name);
-
-	gSvcStatusHandle = RegisterServiceCtrlHandler(
-		service_name,
-		SvcCtrlHandler);
-
-	if (!gSvcStatusHandle)
+	HRESULT hr = S_OK;
+	wrapper_error_t* error = NULL;
+	wrapper_config_t* config = NULL;
+	TCHAR* configuration_path = wrapper_allocate_string(_MAX_PATH);
+	if (NULL == configuration_path)
 	{
-		DWORD last_error = GetLastError();
-		wrapper_error_t* error = wrapper_error_from_system(
-			last_error, _T("Failed to register the control handler for service '%s'"), service_name);
-		if (error)
-		{
-			wrapper_error_log(error);
-			wrapper_error_free(error);
-		}
-
-		SvcReportEvent(TEXT("RegisterServiceCtrlHandler"));
-		return;
+		hr = E_OUTOFMEMORY;
 	}
 
-	WRAPPER_INFO(_T("Succesfully created a service control handler for service '%s'"), service_name);
+	if (SUCCEEDED(hr))
+	{
+		if (!wrapper_config_get_path(configuration_path, _MAX_PATH, &error))
+		{
+			hr = E_FAIL;
+		}
+	}
 
-	// These SERVICE_STATUS members remain as set here
+	if (SUCCEEDED(hr))
+	{
+		config = wrapper_config_alloc();
+		if (NULL == config)
+		{
+			hr = E_OUTOFMEMORY;
+		}
+	}
 
-	gSvcStatus.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-	gSvcStatus.dwServiceSpecificExitCode = 0;
+	TCHAR* service_name = NULL;
+	if (SUCCEEDED(hr))
+	{
+		if (!wrapper_config_read(configuration_path, config, &error))
+		{
+			hr = E_FAIL;
+		}
+		else
+		{
+			service_name = config->name;
+		}
+	}
 
-	// Report initial status to the SCM
+	if (SUCCEEDED(hr))
+	{
+		WRAPPER_INFO(_T("Register a service control handler for service '%s'"), service_name);
+		status_handle = RegisterServiceCtrlHandler(service_name, wrapper_service_control_handler);
+		if (!status_handle)
+		{
+			DWORD last_error = GetLastError();
+			error = wrapper_error_from_system(last_error, _T("Failed to register the control handler for service '%s'"), service_name);
+			hr = HRESULT_FROM_WIN32(last_error);
+		}
+	}
 
-	ReportSvcStatus(SERVICE_START_PENDING, NO_ERROR, 3000);
+	if (SUCCEEDED(hr))
+	{
+		WRAPPER_INFO(_T("Succesfully created a service control handler for service '%s'"), service_name);
+		service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
+		service_status.dwServiceSpecificExitCode = 0;
 
-	// Perform service-specific initialization and work.
+		wrapper_service_report_status(SERVICE_START_PENDING, NO_ERROR, 3000);
+		wrapper_service_init(dwArgc, lpszArgv, config, &error);
+	}
+	else
+	{
+		wrapper_service_report_status(SERVICE_STOPPED, NO_ERROR, 0);
+	}
 
-	SvcInit(dwArgc, lpszArgv);
+	wrapper_free(configuration_path);
+	wrapper_error_free(error);
+	wrapper_config_free(config);
 }
 
 //
@@ -136,130 +170,172 @@ VOID WINAPI SvcMain(DWORD dwArgc, LPTSTR* lpszArgv)
 // Return value:
 //   None
 //
-VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
+int wrapper_service_init(DWORD dwArgc, LPTSTR* lpszArgv, wrapper_config_t* config, wrapper_error_t** error)
 {
+	HRESULT hr = S_OK;
+
 	SECURITY_ATTRIBUTES saAttr = {0};
-	STARTUPINFO si = {0};
-	PROCESS_INFORMATION pi = {0};
+	STARTUPINFO startupinfo = {0};
+	PROCESS_INFORMATION process_information = {0};
 
-	TCHAR service_name[_MAX_PATH];
-	GetServiceName(service_name, _MAX_PATH);
+	TCHAR* service_name = config->name;
 
-	ZeroMemory(&si, sizeof si);
-	ZeroMemory(&pi, sizeof pi);
+	ZeroMemory(&startupinfo, sizeof startupinfo);
+	ZeroMemory(&process_information, sizeof process_information);
 
-	si.cb = sizeof si;
-	si.dwFlags |= STARTF_USESTDHANDLES;
+	startupinfo.cb = sizeof startupinfo;
+	startupinfo.dwFlags |= STARTF_USESTDHANDLES;
 
-	ghSvcStopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
-	if (ghSvcStopEvent == NULL)
+	if (SUCCEEDED(hr))
 	{
-		DWORD last_error = GetLastError();
-		wrapper_error_t* error = wrapper_error_from_system(
-			last_error, _T("Failed to register the event for service '%s' that would be used to say the process has stopped."),
-			service_name);
-		if (error)
+		stop_event = CreateEvent(NULL, TRUE, FALSE, NULL);
+		if (stop_event == NULL)
 		{
-			wrapper_error_log(error);
-			wrapper_error_free(error);
+			DWORD last_error = GetLastError();
+			if (error)
+			{
+				*error = wrapper_error_from_system(
+					last_error, _T("Failed to register the event for service '%s' that would be used to say the process has stopped."),
+					service_name);
+			}
+			hr = HRESULT_FROM_WIN32(last_error);
 		}
-
-		ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
-		return;
 	}
 
-	WRAPPER_INFO(_T("Starting process '%s'"), _T("sample1.exe"));
-
-	TCHAR szCmdline[4096];
-	StringCbCopy(szCmdline, 4096, _T("sample1.exe"));
-
-	if (!CreateProcess(NULL,
-		szCmdline,
-	                   NULL,
-	                   NULL,
-	                   FALSE,
-	                   0,
-	                   NULL,
-	                   NULL,
-	                   &si,
-	                   &pi)
-	)
+	TCHAR* command_line = NULL;
+	if (SUCCEEDED(hr))
 	{
-		DWORD last_error = GetLastError();
-		wrapper_error_t* error = wrapper_error_from_system(last_error, _T("Failed to start the process '%s'"),
-		                                                   _T("sample1.exe"));
-		if (error)
+		command_line = wrapper_allocate_string(4096);
+		if (!command_line)
 		{
-			wrapper_error_log(error);
-			wrapper_error_free(error);
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(E_OUTOFMEMORY, _T("Failed to allocate a buffer for the command line"));
+			}
+			hr = E_OUTOFMEMORY;
 		}
-		ReportSvcStatus(SERVICE_STOPPED, last_error, 0);
-		return;
 	}
 
-	WRAPPER_INFO(_T("Succesfully started process '%s'"), _T("sample1.exe"));
-
-	ReportSvcStatus(SERVICE_RUNNING, NO_ERROR, 0);
-
-	//WRAPPER_INFO(_T("Waiting for signal to stop service"));
-	//WaitForSingleObject(ghSvcStopEvent, INFINITE);
-	//WRAPPER_INFO(_T("Received a request to stop the windows service"));
-
-	// TO_DO: Perform work until service stops.
-	HANDLE ghEvents[2];
-	ghEvents[0] = pi.hProcess;
-	ghEvents[1] = ghSvcStopEvent;
-	DWORD dwEvent = WaitForMultipleObjects(
-		2,           // number of objects in array
-		ghEvents,    // array of objects
-		FALSE,       // wait for any object
-		INFINITE);       // five-second wait
-
-	switch (dwEvent)
+	if (SUCCEEDED(hr))
 	{
-	case WAIT_OBJECT_0 + 0:
-		WRAPPER_INFO(_T("The process has ended. "));
-		break;
-
-	case WAIT_OBJECT_0 + 1:
-		WRAPPER_INFO(_T("A request was received to stop the Windows Service."));
-		WRAPPER_INFO(_T("Sending a CTRL+C signal to the child process."));
-		SendConsoleCtrlEvent(pi.dwProcessId, CTRL_C_EVENT);
-
-		DWORD dwStatus;
-		do
+		hr = StringCbCopy(command_line, 4096, config->command_line);
+		if (FAILED(hr))
 		{
-			ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
-			WRAPPER_INFO(_T("Waiting up to 5000ms for the child process to termimate."));
-			dwStatus = WaitForSingleObject(pi.hProcess, 1000);
-		} while (dwStatus == WAIT_TIMEOUT);
-		WRAPPER_INFO(_T("The child process succesfully termimated."));
-		break;
-
-	case WAIT_TIMEOUT:
-		printf("Wait timed out.\n");
-		break;
-
-	default:
-		DWORD last_error = GetLastError();
-		wrapper_error_t* error = wrapper_error_from_system(last_error, _T("Failed to wait either for the process to terminate or for the stop event to be raised"));
-		if (error)
-		{
-			wrapper_error_log(error);
-			wrapper_error_free(error);
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(hr, _T("Failed to copy the command line from the configuration file to a local buffer"));
+			}
 		}
-
-		break;
+	}
+	
+	if (SUCCEEDED(hr))
+	{
+		WRAPPER_INFO(_T("Starting process with command line '%s'"), command_line);
+		if (!CreateProcess(NULL,
+			command_line,
+			NULL,
+			NULL,
+			FALSE,
+			0,
+			NULL,
+			NULL,
+			&startupinfo,
+			&process_information)
+			)
+		{
+			DWORD last_error = GetLastError();
+			if (error)
+			{
+				*error = wrapper_error_from_system(last_error, _T("Failed to start the process '%s'"), _T("sample1.exe"));
+			}
+			hr = HRESULT_FROM_WIN32(last_error);
+		}
+		else 
+		{
+			// TODO: Display more information that could help the user diagnose when there is a failure to execute the process 
+			WRAPPER_INFO(_T("Successfully started process with command line '%s'"), command_line);
+			WRAPPER_INFO(_T("  Process ID: %d (0x%08x)"), process_information.dwProcessId, process_information.dwProcessId);
+			
+			wrapper_service_report_status(SERVICE_RUNNING, NO_ERROR, 0);
+		}
 	}
 
-	ReportSvcStatus(SERVICE_STOPPED, NO_ERROR, 0);
-	WRAPPER_INFO(_T("The windows service was stopped."));
+	if (SUCCEEDED(hr))
+	{
+		HANDLE events[2];
+		events[0] = process_information.hProcess;
+		events[1] = stop_event;
 
-	if (pi.hProcess)
-		CloseHandle(pi.hProcess);
+		unsigned count = sizeof(events)/sizeof(events[0]);
+		int wait_all = FALSE;
 
-	if (pi.hThread)
-		CloseHandle(pi.hThread);
+		DWORD event = WaitForMultipleObjects(count, events, wait_all, INFINITE); 
+		
+		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0);
+
+		switch (event)
+		{
+		case WAIT_OBJECT_0 + 0:
+			// TODO: Display more information about the state of the process, like whether it was killed, crashed or terminated gracefully 
+			WRAPPER_INFO(_T("The child process has ended."));
+			break;
+
+		case WAIT_OBJECT_0 + 1:
+			WRAPPER_INFO(_T("A request was received to stop the service. Sending a CTRL+C signal to the child process."));
+			SendConsoleCtrlEvent(process_information.dwProcessId, CTRL_C_EVENT);
+
+			// TODO: Should we forcefully terminate the process if it doesn't respond in say 10 minutes?
+			const int timeout = 5000;
+			DWORD status;
+			do
+			{
+				wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, timeout);
+				WRAPPER_INFO(_T("Waiting up to %dms for the child process to termimate."), timeout);
+				status = WaitForSingleObject(process_information.hProcess, timeout);
+			} while (status == WAIT_TIMEOUT);
+			WRAPPER_INFO(_T("The child process succesfully termimated."));
+			break;
+
+		case WAIT_TIMEOUT:
+			WRAPPER_WARNING(_T("Wait timed out while waiting for the process to terminate or for the stop event.\n"));
+			hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(hr, _T("Failed to wait either for the process to terminate or for the stop event to be raised"));
+			}
+			hr = HRESULT_FROM_WIN32(hr);
+			break;
+
+		default:
+			DWORD last_error = GetLastError();
+			if (error)
+			{
+				*error = wrapper_error_from_system(last_error, _T("Failed to wait either for the process to terminate or for the stop event to be raised"));
+			}
+			hr = HRESULT_FROM_WIN32(last_error);
+			break;
+		}
+	}
+
+	if (error && *error)
+	{
+		const long code = (*error)->code;
+		wrapper_service_report_status(SERVICE_STOPPED, code, 0);
+		WRAPPER_INFO(_T("The windows service stopped with errors."));
+	}
+	else
+	{
+		wrapper_service_report_status(SERVICE_STOPPED, NO_ERROR, 0);
+		WRAPPER_INFO(_T("The windows service stopped succesfully."));
+	}
+
+	if (process_information.hProcess)
+		CloseHandle(process_information.hProcess);
+
+	if (process_information.hThread)
+		CloseHandle(process_information.hThread);
+
+	return 1;
 }
 
 //
@@ -275,29 +351,29 @@ VOID SvcInit(DWORD dwArgc, LPTSTR* lpszArgv)
 // Return value:
 //   None
 //
-VOID ReportSvcStatus(DWORD dwCurrentState,
+VOID wrapper_service_report_status(DWORD dwCurrentState,
                      DWORD dwWin32ExitCode,
                      DWORD dwWaitHint)
 {
 	static DWORD dwCheckPoint = 1;
-	gSvcStatus.dwCurrentState = dwCurrentState;
-	gSvcStatus.dwWin32ExitCode = dwWin32ExitCode;
-	gSvcStatus.dwWaitHint = dwWaitHint;
+	service_status.dwCurrentState = dwCurrentState;
+	service_status.dwWin32ExitCode = dwWin32ExitCode;
+	service_status.dwWaitHint = dwWaitHint;
 
 	if (dwCurrentState == SERVICE_START_PENDING)
-		gSvcStatus.dwControlsAccepted = 0;
+		service_status.dwControlsAccepted = 0;
 	else
-		gSvcStatus.dwControlsAccepted = SERVICE_ACCEPT_STOP;
+		service_status.dwControlsAccepted = SERVICE_ACCEPT_STOP;
 
 	if (dwCurrentState == SERVICE_RUNNING ||
 		dwCurrentState == SERVICE_STOPPED)
-		gSvcStatus.dwCheckPoint = 0;
+		service_status.dwCheckPoint = 0;
 	else
-		gSvcStatus.dwCheckPoint = dwCheckPoint++;
+		service_status.dwCheckPoint = dwCheckPoint++;
 
 	const TCHAR* status_text = wrapper_service_get_status_text(dwCurrentState);
 	WRAPPER_INFO(_T("Setting the status of the service to '%s'"), status_text);
-	if (SetServiceStatus(gSvcStatusHandle, &gSvcStatus)) 
+	if (SetServiceStatus(status_handle, &service_status)) 
 	{
 		WRAPPER_INFO(_T("Set the status of the service to '%s'"), status_text);
 	}
@@ -326,19 +402,19 @@ VOID ReportSvcStatus(DWORD dwCurrentState,
 // Return value:
 //   None
 //
-VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
+VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl)
 {
 	// Handle the requested control code. 
 
 	switch (dwCtrl)
 	{
 	case SERVICE_CONTROL_STOP:
-		ReportSvcStatus(SERVICE_STOP_PENDING, NO_ERROR, 0);
+		wrapper_service_report_status(SERVICE_STOP_PENDING, NO_ERROR, 0);
 
 		// Signal the service to stop.
 
-		SetEvent(ghSvcStopEvent);
-		ReportSvcStatus(gSvcStatus.dwCurrentState, NO_ERROR, 0);
+		SetEvent(stop_event);
+		wrapper_service_report_status(service_status.dwCurrentState, NO_ERROR, 0);
 
 	case SERVICE_CONTROL_INTERROGATE:
 		break;
@@ -348,47 +424,481 @@ VOID WINAPI SvcCtrlHandler(DWORD dwCtrl)
 	}
 }
 
+int wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
+{
+	TCHAR module_path[_MAX_PATH];
+	GetModuleFileName(NULL, module_path, _MAX_PATH);
+	PathCchRenameExtension(module_path, sizeof(module_path) / sizeof(module_path[0]), _T(".log"));
+	wrapper_log_set_handler(wrapper_log_file_handler, module_path);
+
+	WRAPPER_INFO(_T("Starting Service"));
+	SERVICE_TABLE_ENTRY DispatchTable[] =
+	{
+		{ config->name, (LPSERVICE_MAIN_FUNCTION)wrapper_service_main },
+		{ NULL, NULL }
+	};
+
+	if (!StartServiceCtrlDispatcher(DispatchTable))
+	{
+		WRAPPER_ERROR(_T("Failed to start service"));
+	}
+	WRAPPER_INFO(_T("Done"));
+
+	return 1;
+}
+
 //
 // Purpose: 
-//   Logs messages to the event log
+//   Installs a service in the SCM database
 //
 // Parameters:
-//   szFunction - name of function that failed
+//   None
 // 
 // Return value:
 //   None
 //
-// Remarks:
-//   The service must have an entry in the Application event log.
-//
-VOID SvcReportEvent(LPTSTR szFunction)
+int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 {
-	HANDLE hEventSource;
-	LPCTSTR lpszStrings[2];
-	TCHAR Buffer[80];
+	SC_HANDLE schSCManager;
+	SC_HANDLE schService;
+	TCHAR szPath[MAX_PATH];
 
-	TCHAR service_name[_MAX_PATH];
-	GetServiceName(service_name, _MAX_PATH);
-
-	hEventSource = RegisterEventSource(NULL, service_name);
-
-	if (NULL != hEventSource)
+	if (!GetModuleFileName(NULL, szPath, MAX_PATH))
 	{
-		StringCchPrintf(Buffer, 80, TEXT("%s failed with %d"), szFunction, GetLastError());
-
-		lpszStrings[0] = service_name;
-		lpszStrings[1] = Buffer;
-
-		ReportEvent(hEventSource, // event log handle
-		            EVENTLOG_ERROR_TYPE, // event type
-		            0, // event category
-		            SVC_ERROR, // event identifier
-		            NULL, // no security identifier
-		            2, // size of lpszStrings array
-		            0, // no binary data
-		            lpszStrings, // array of strings
-		            NULL); // no binary data
-
-		DeregisterEventSource(hEventSource);
+		printf("Cannot install service (%d)\n", GetLastError());
+		return;
 	}
+
+	// Get a handle to the SCM database. 
+
+	schSCManager = OpenSCManager(
+		NULL,                    // local computer
+		NULL,                    // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS);  // full access rights 
+
+	if (NULL == schSCManager)
+	{
+		printf("OpenSCManager failed (%d)\n", GetLastError());
+		return;
+	}
+
+	// Create the service
+
+	schService = CreateService(
+		schSCManager,              // SCM database 
+		config->name,                   // name of service 
+		config->title,                   // service name to display 
+		SERVICE_ALL_ACCESS,        // desired access 
+		SERVICE_WIN32_OWN_PROCESS, // service type 
+		SERVICE_DEMAND_START,      // start type 
+		SERVICE_ERROR_NORMAL,      // error control type 
+		szPath,                    // path to service's binary 
+		NULL,                      // no load ordering group 
+		NULL,                      // no tag identifier 
+		NULL,                      // no dependencies 
+		NULL,                      // LocalSystem account 
+		NULL);                     // no password 
+
+	if (schService == NULL)
+	{
+		printf("CreateService failed (%d)\n", GetLastError());
+		CloseServiceHandle(schSCManager);
+		return;
+	}
+	else printf("Service installed successfully\n");
+
+	CloseServiceHandle(schService);
+	CloseServiceHandle(schSCManager);
+
+	return 1;
 }
+
+//
+// Purpose: 
+//   Retrieves and displays the current service configuration.
+//
+// Parameters:
+//   None
+// 
+// Return value:
+//   None
+//
+int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
+{
+	SC_HANDLE schSCManager = NULL;
+	SC_HANDLE schService = NULL;
+	LPQUERY_SERVICE_CONFIG lpsc = NULL;
+	LPSERVICE_DESCRIPTION lpsd = NULL;
+	DWORD dwBytesNeeded = 0, cbBufSize = 0, dwError = 0;
+
+	// Get a handle to the SCM database. 
+
+	schSCManager = OpenSCManager(
+		NULL,                    // local computer
+		NULL,                    // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS);  // full access rights 
+
+	if (NULL == schSCManager)
+	{
+		printf("OpenSCManager failed (%d)\n", GetLastError());
+		return;
+	}
+
+	// Get a handle to the service.
+
+	schService = OpenService(
+		schSCManager,          // SCM database 
+		config->name,             // name of service 
+		SERVICE_QUERY_CONFIG); // need query config access 
+
+	if (schService == NULL)
+	{
+		printf("OpenService failed (%d)\n", GetLastError());
+		CloseServiceHandle(schSCManager);
+		return;
+	}
+
+	// Get the configuration information.
+
+	if (!QueryServiceConfig(
+		schService,
+		NULL,
+		0,
+		&dwBytesNeeded))
+	{
+		dwError = GetLastError();
+		if (ERROR_INSUFFICIENT_BUFFER == dwError)
+		{
+			cbBufSize = dwBytesNeeded;
+			lpsc = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LMEM_FIXED, cbBufSize);
+		}
+		else
+		{
+			printf("QueryServiceConfig failed (%d)", dwError);
+			goto cleanup;
+		}
+	}
+
+	if (!QueryServiceConfig(
+		schService,
+		lpsc,
+		cbBufSize,
+		&dwBytesNeeded))
+	{
+		printf("QueryServiceConfig failed (%d)", GetLastError());
+		goto cleanup;
+	}
+
+	if (!QueryServiceConfig2(
+		schService,
+		SERVICE_CONFIG_DESCRIPTION,
+		NULL,
+		0,
+		&dwBytesNeeded))
+	{
+		dwError = GetLastError();
+		if (ERROR_INSUFFICIENT_BUFFER == dwError)
+		{
+			cbBufSize = dwBytesNeeded;
+			lpsd = (LPSERVICE_DESCRIPTION)LocalAlloc(LMEM_FIXED, cbBufSize);
+		}
+		else
+		{
+			printf("QueryServiceConfig2 failed (%d)", dwError);
+			goto cleanup;
+		}
+	}
+
+	if (!QueryServiceConfig2(
+		schService,
+		SERVICE_CONFIG_DESCRIPTION,
+		(LPBYTE)lpsd,
+		cbBufSize,
+		&dwBytesNeeded))
+	{
+		printf("QueryServiceConfig2 failed (%d)", GetLastError());
+		goto cleanup;
+	}
+
+	// Print the configuration information.
+
+	_tprintf(TEXT("%s configuration: \n"), config->name);
+	_tprintf(TEXT("  Type: 0x%x\n"), lpsc->dwServiceType);
+	_tprintf(TEXT("  Start Type: 0x%x\n"), lpsc->dwStartType);
+	_tprintf(TEXT("  Error Control: 0x%x\n"), lpsc->dwErrorControl);
+	_tprintf(TEXT("  Binary path: %s\n"), lpsc->lpBinaryPathName);
+	_tprintf(TEXT("  Account: %s\n"), lpsc->lpServiceStartName);
+
+	if (lpsd->lpDescription != NULL && lstrcmp(lpsd->lpDescription, TEXT("")) != 0)
+		_tprintf(TEXT("  Description: %s\n"), lpsd->lpDescription);
+	if (lpsc->lpLoadOrderGroup != NULL && lstrcmp(lpsc->lpLoadOrderGroup, TEXT("")) != 0)
+		_tprintf(TEXT("  Load order group: %s\n"), lpsc->lpLoadOrderGroup);
+	if (lpsc->dwTagId != 0)
+		_tprintf(TEXT("  Tag ID: %d\n"), lpsc->dwTagId);
+	if (lpsc->lpDependencies != NULL && lstrcmp(lpsc->lpDependencies, TEXT("")) != 0)
+		_tprintf(TEXT("  Dependencies: %s\n"), lpsc->lpDependencies);
+
+	LocalFree(lpsc);
+	LocalFree(lpsd);
+
+cleanup:
+	CloseServiceHandle(schService);
+	CloseServiceHandle(schSCManager);
+
+	return 1;
+}
+
+//
+// Purpose: 
+//   Disables the service.
+//
+// Parameters:
+//   None
+// 
+// Return value:
+//   None
+//
+int wrapper_service_disable(wrapper_config_t* config, wrapper_error_t** error)
+{
+	SC_HANDLE schSCManager;
+	SC_HANDLE schService;
+
+	// Get a handle to the SCM database. 
+
+	schSCManager = OpenSCManager(
+		NULL,                    // local computer
+		NULL,                    // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS);  // full access rights 
+
+	if (NULL == schSCManager)
+	{
+		printf("OpenSCManager failed (%d)\n", GetLastError());
+		return;
+	}
+
+	// Get a handle to the service.
+
+	schService = OpenService(
+		schSCManager,            // SCM database 
+		config->name,               // name of service 
+		SERVICE_CHANGE_CONFIG);  // need change config access 
+
+	if (schService == NULL)
+	{
+		printf("OpenService failed (%d)\n", GetLastError());
+		CloseServiceHandle(schSCManager);
+		return;
+	}
+
+	// Change the service start type.
+
+	if (!ChangeServiceConfig(
+		schService,        // handle of service 
+		SERVICE_NO_CHANGE, // service type: no change 
+		SERVICE_DISABLED,  // service start type 
+		SERVICE_NO_CHANGE, // error control: no change 
+		NULL,              // binary path: no change 
+		NULL,              // load order group: no change 
+		NULL,              // tag ID: no change 
+		NULL,              // dependencies: no change 
+		NULL,              // account name: no change 
+		NULL,              // password: no change 
+		NULL))            // display name: no change
+	{
+		printf("ChangeServiceConfig failed (%d)\n", GetLastError());
+	}
+	else printf("Service disabled successfully.\n");
+
+	CloseServiceHandle(schService);
+	CloseServiceHandle(schSCManager);
+
+	return 1;
+}
+
+//
+// Purpose: 
+//   Enables the service.
+//
+// Parameters:
+//   None
+// 
+// Return value:
+//   None
+//
+int wrapper_service_enable(wrapper_config_t* config, wrapper_error_t** error)
+{
+	SC_HANDLE schSCManager;
+	SC_HANDLE schService;
+
+	// Get a handle to the SCM database. 
+
+	schSCManager = OpenSCManager(
+		NULL,                    // local computer
+		NULL,                    // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS);  // full access rights 
+
+	if (NULL == schSCManager)
+	{
+		printf("OpenSCManager failed (%d)\n", GetLastError());
+		return;
+	}
+
+	// Get a handle to the service.
+
+	schService = OpenService(
+		schSCManager,            // SCM database 
+		config->name,               // name of service 
+		SERVICE_CHANGE_CONFIG);  // need change config access 
+
+	if (schService == NULL)
+	{
+		printf("OpenService failed (%d)\n", GetLastError());
+		CloseServiceHandle(schSCManager);
+		return;
+	}
+
+	// Change the service start type.
+
+	if (!ChangeServiceConfig(
+		schService,            // handle of service 
+		SERVICE_NO_CHANGE,     // service type: no change 
+		SERVICE_DEMAND_START,  // service start type 
+		SERVICE_NO_CHANGE,     // error control: no change 
+		NULL,                  // binary path: no change 
+		NULL,                  // load order group: no change 
+		NULL,                  // tag ID: no change 
+		NULL,                  // dependencies: no change 
+		NULL,                  // account name: no change 
+		NULL,                  // password: no change 
+		NULL))                // display name: no change
+	{
+		printf("ChangeServiceConfig failed (%d)\n", GetLastError());
+	}
+	else printf("Service enabled successfully.\n");
+
+	CloseServiceHandle(schService);
+	CloseServiceHandle(schSCManager);
+
+	return 1;
+}
+
+//
+// Purpose: 
+//   Updates the service description to "This is a test description".
+//
+// Parameters:
+//   None
+// 
+// Return value:
+//   None
+//
+int wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
+{
+	SC_HANDLE schSCManager;
+	SC_HANDLE schService;
+	SERVICE_DESCRIPTION sd;
+	LPTSTR szDesc = config->description;
+
+	// Get a handle to the SCM database. 
+
+	schSCManager = OpenSCManager(
+		NULL,                    // local computer
+		NULL,                    // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS);  // full access rights 
+
+	if (NULL == schSCManager)
+	{
+		printf("OpenSCManager failed (%d)\n", GetLastError());
+		return;
+	}
+
+	// Get a handle to the service.
+
+	schService = OpenService(
+		schSCManager,            // SCM database 
+		config->name,               // name of service 
+		SERVICE_CHANGE_CONFIG);  // need change config access 
+
+	if (schService == NULL)
+	{
+		printf("OpenService failed (%d)\n", GetLastError());
+		CloseServiceHandle(schSCManager);
+		return;
+	}
+
+	// Change the service description.
+
+	sd.lpDescription = szDesc;
+
+	if (!ChangeServiceConfig2(
+		schService,                 // handle to service
+		SERVICE_CONFIG_DESCRIPTION, // change: description
+		&sd))                      // new description
+	{
+		printf("ChangeServiceConfig2 failed\n");
+	}
+	else printf("Service description updated successfully.\n");
+
+	CloseServiceHandle(schService);
+	CloseServiceHandle(schSCManager);
+
+	return 1;
+}
+
+//
+// Purpose: 
+//   Deletes a service from the SCM database
+//
+// Parameters:
+//   None
+// 
+// Return value:
+//   None
+//
+int wrapper_service_delete(wrapper_config_t* config, wrapper_error_t** error)
+{
+	SC_HANDLE schSCManager;
+	SC_HANDLE schService;
+	SERVICE_STATUS ssStatus;
+
+	// Get a handle to the SCM database. 
+
+	schSCManager = OpenSCManager(
+		NULL,                    // local computer
+		NULL,                    // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS);  // full access rights 
+
+	if (NULL == schSCManager)
+	{
+		printf("OpenSCManager failed (%d)\n", GetLastError());
+		return;
+	}
+
+	// Get a handle to the service.
+
+	schService = OpenService(
+		schSCManager,       // SCM database 
+		config->name,          // name of service 
+		DELETE);            // need delete access 
+
+	if (schService == NULL)
+	{
+		printf("OpenService failed (%d)\n", GetLastError());
+		CloseServiceHandle(schSCManager);
+		return;
+	}
+
+	// Delete the service.
+
+	if (!DeleteService(schService))
+	{
+		printf("DeleteService failed (%d)\n", GetLastError());
+	}
+	else printf("Service deleted successfully\n");
+
+	CloseServiceHandle(schService);
+	CloseServiceHandle(schSCManager);
+
+	return 1;
+}
+
