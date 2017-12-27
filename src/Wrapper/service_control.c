@@ -13,7 +13,7 @@ BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService);
 // Return value:
 //   None
 //
-VOID  wrapper_service_start(LPCTSTR name)
+VOID  wrapper_service_start(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -41,7 +41,7 @@ VOID  wrapper_service_start(LPCTSTR name)
 
 	schService = OpenService(
 		schSCManager,         // SCM database 
-		name,            // name of service 
+		config->name,            // name of service 
 		SERVICE_ALL_ACCESS);  // full access 
 
 	if (schService == NULL)
@@ -237,7 +237,7 @@ VOID  wrapper_service_start(LPCTSTR name)
 // Return value:
 //   None
 //
-VOID  wrapper_service_dacl(LPCTSTR pszServiceName)
+VOID  wrapper_service_dacl(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -270,7 +270,7 @@ VOID  wrapper_service_dacl(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,              // SCManager database 
-		pszServiceName,                 // name of service 
+		config->name,                 // name of service 
 		READ_CONTROL | WRITE_DAC); // access
 
 	if (schService == NULL)
@@ -383,7 +383,7 @@ dacl_cleanup:
 // Return value:
 //   None
 //
-VOID  wrapper_service_stop(LPCTSTR name)
+VOID  wrapper_service_stop(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -411,7 +411,7 @@ VOID  wrapper_service_stop(LPCTSTR name)
 
 	schService = OpenService(
 		schSCManager,         // SCM database 
-		name,            // name of service 
+		config->name,            // name of service 
 		SERVICE_STOP |
 		SERVICE_QUERY_STATUS |
 		SERVICE_ENUMERATE_DEPENDENTS);

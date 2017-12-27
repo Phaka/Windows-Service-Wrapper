@@ -115,3 +115,12 @@ void wrapper_error_log(wrapper_error_t * error)
 		WRAPPER_ERROR(_T("%s [0x%08x %s]"), error->user_message, error->code, error->message);
 	}
 }
+
+void wrapper_error_reset(wrapper_error_t** error)
+{
+	if (error)
+	{
+		wrapper_error_free(*error);
+		*error = NULL;
+	}
+}

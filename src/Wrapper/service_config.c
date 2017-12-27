@@ -4,7 +4,7 @@
 #include "wrapper-log.h"
 #include "service.h"
 
-void wrapper_service_run(LPTSTR name)
+void wrapper_service_run(wrapper_config_t* config)
 {
 	TCHAR module_path[_MAX_PATH];
 	GetModuleFileName(NULL, module_path, _MAX_PATH);
@@ -14,7 +14,7 @@ void wrapper_service_run(LPTSTR name)
 	WRAPPER_INFO(_T("Starting Service"));
 	SERVICE_TABLE_ENTRY DispatchTable[] =
 	{
-		{ name, (LPSERVICE_MAIN_FUNCTION)SvcMain },
+		{ config->name, (LPSERVICE_MAIN_FUNCTION)SvcMain },
 		{ NULL, NULL }
 	};
 
@@ -36,7 +36,7 @@ void wrapper_service_run(LPTSTR name)
 // Return value:
 //   None
 //
-VOID wrapper_service_install(LPCTSTR pszServiceName)
+VOID wrapper_service_install(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -65,8 +65,8 @@ VOID wrapper_service_install(LPCTSTR pszServiceName)
 
 	schService = CreateService(
 		schSCManager,              // SCM database 
-		pszServiceName,                   // name of service 
-		pszServiceName,                   // service name to display 
+		config->name,                   // name of service 
+		config->title,                   // service name to display 
 		SERVICE_ALL_ACCESS,        // desired access 
 		SERVICE_WIN32_OWN_PROCESS, // service type 
 		SERVICE_DEMAND_START,      // start type 
@@ -100,7 +100,7 @@ VOID wrapper_service_install(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID wrapper_service_query(LPCTSTR pszServiceName)
+VOID wrapper_service_query(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager = NULL;
 	SC_HANDLE schService = NULL;
@@ -125,7 +125,7 @@ VOID wrapper_service_query(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,          // SCM database 
-		pszServiceName,             // name of service 
+		config->name,             // name of service 
 		SERVICE_QUERY_CONFIG); // need query config access 
 
 	if (schService == NULL)
@@ -199,7 +199,7 @@ VOID wrapper_service_query(LPCTSTR pszServiceName)
 
 	// Print the configuration information.
 
-	_tprintf(TEXT("%s configuration: \n"), pszServiceName);
+	_tprintf(TEXT("%s configuration: \n"), config->name);
 	_tprintf(TEXT("  Type: 0x%x\n"), lpsc->dwServiceType);
 	_tprintf(TEXT("  Start Type: 0x%x\n"), lpsc->dwStartType);
 	_tprintf(TEXT("  Error Control: 0x%x\n"), lpsc->dwErrorControl);
@@ -233,7 +233,7 @@ cleanup:
 // Return value:
 //   None
 //
-VOID wrapper_service_disable(LPCTSTR pszServiceName)
+VOID wrapper_service_disable(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -255,7 +255,7 @@ VOID wrapper_service_disable(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,            // SCM database 
-		pszServiceName,               // name of service 
+		config->name,               // name of service 
 		SERVICE_CHANGE_CONFIG);  // need change config access 
 
 	if (schService == NULL)
@@ -298,7 +298,7 @@ VOID wrapper_service_disable(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID wrapper_service_enable(LPCTSTR pszServiceName)
+VOID wrapper_service_enable(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -320,7 +320,7 @@ VOID wrapper_service_enable(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,            // SCM database 
-		pszServiceName,               // name of service 
+		config->name,               // name of service 
 		SERVICE_CHANGE_CONFIG);  // need change config access 
 
 	if (schService == NULL)
@@ -363,12 +363,12 @@ VOID wrapper_service_enable(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID wrapper_service_update(LPCTSTR pszServiceName)
+VOID wrapper_service_update(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
 	SERVICE_DESCRIPTION sd;
-	LPTSTR szDesc = TEXT("This is a test description");
+	LPTSTR szDesc = config->description;
 
 	// Get a handle to the SCM database. 
 
@@ -387,7 +387,7 @@ VOID wrapper_service_update(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,            // SCM database 
-		pszServiceName,               // name of service 
+		config->name,               // name of service 
 		SERVICE_CHANGE_CONFIG);  // need change config access 
 
 	if (schService == NULL)
@@ -424,7 +424,7 @@ VOID wrapper_service_update(LPCTSTR pszServiceName)
 // Return value:
 //   None
 //
-VOID wrapper_service_delete(LPCTSTR pszServiceName)
+VOID wrapper_service_delete(wrapper_config_t* config)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -447,7 +447,7 @@ VOID wrapper_service_delete(LPCTSTR pszServiceName)
 
 	schService = OpenService(
 		schSCManager,       // SCM database 
-		pszServiceName,          // name of service 
+		config->name,          // name of service 
 		DELETE);            // need delete access 
 
 	if (schService == NULL)
