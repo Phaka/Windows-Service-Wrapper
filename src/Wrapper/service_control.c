@@ -13,7 +13,7 @@ BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService);
 // Return value:
 //   None
 //
-VOID  wrapper_service_start(wrapper_config_t* config)
+VOID  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -237,7 +237,7 @@ VOID  wrapper_service_start(wrapper_config_t* config)
 // Return value:
 //   None
 //
-VOID  wrapper_service_dacl(wrapper_config_t* config)
+VOID  wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -383,7 +383,7 @@ dacl_cleanup:
 // Return value:
 //   None
 //
-VOID  wrapper_service_stop(wrapper_config_t* config)
+VOID  wrapper_service_stop(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
