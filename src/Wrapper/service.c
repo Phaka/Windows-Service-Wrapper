@@ -157,9 +157,6 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 
 	if (SUCCEEDED(hr))
 	{
-		service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
-		service_status.dwServiceSpecificExitCode = 0;
-
 		wrapper_service_report_status(SERVICE_START_PENDING, NO_ERROR, 3000, config, &error);
 		wrapper_service_init(config, &error);
 	}
@@ -489,6 +486,7 @@ int wrapper_service_report_status(DWORD state,
 	service_status.dwCurrentState = state;
 	service_status.dwWin32ExitCode = exit_code;
 	service_status.dwWaitHint = timeout;
+	service_status.dwServiceType = SERVICE_WIN32_OWN_PROCESS;
 
 	if (state == SERVICE_START_PENDING)
 		service_status.dwControlsAccepted = 0;
