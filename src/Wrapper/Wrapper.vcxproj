@@ -87,7 +87,7 @@
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
     <TargetName>wrapper</TargetName>
-    <RunCodeAnalysis>false</RunCodeAnalysis>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
     <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
     <IntDir>obj\$(Platform)\$(Configuration)\</IntDir>
   </PropertyGroup>
@@ -96,6 +96,8 @@
     <OutDir>$(SolutionDir)build\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>obj\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>wrapper</TargetName>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -148,7 +150,7 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <CompileAs>CompileAsC</CompileAs>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <EnablePREfast>false</EnablePREfast>
+      <EnablePREfast>true</EnablePREfast>
       <ErrorReporting>None</ErrorReporting>
       <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
       <CompileAsManaged>false</CompileAsManaged>
@@ -176,6 +178,7 @@
       <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
       <CompileAsManaged>false</CompileAsManaged>
       <CompileAsWinRT>false</CompileAsWinRT>
+      <EnablePREfast>true</EnablePREfast>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
