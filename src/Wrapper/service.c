@@ -19,6 +19,7 @@ int wrapper_service_report_status(DWORD dwCurrentState, DWORD dwWin32ExitCode, D
 SERVICE_STATUS_HANDLE status_handle; // TODO: Move to methods and pass around like variables
 TCHAR* stop_event_name = _T("PHAKA_WINDOWS_SERVICE_STOP_EVENT");
 
+
 const TCHAR* wrapper_service_get_status_text(const unsigned long status)
 {
 	switch (status)
@@ -225,8 +226,7 @@ HANDLE wrapper_create_child_process(wrapper_config_t* config, wrapper_error_t** 
 		{
 			if (error)
 			{
-				*error = wrapper_error_from_hresult(
-					hr, _T("Failed to copy the command line from the configuration file to a local buffer"));
+				*error = wrapper_error_from_hresult(hr, _T("Failed to copy the command line from the configuration file to a local buffer"));
 			}
 		}
 	}
@@ -1281,7 +1281,7 @@ int do_delete(wrapper_config_t* config, wrapper_error_t** error)
 }
 
 
-BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService);
+BOOL wrapper_service_stop_dependent_services(SC_HANDLE schSCManager, SC_HANDLE schService);
 
 int wrapper_service_get_status(SC_HANDLE service,
                                SERVICE_STATUS_PROCESS* status,
@@ -1357,16 +1357,24 @@ int wrapper_service_wait_to_stop(SC_HANDLE service, wrapper_config_t* config, wr
 		}
 	}
 
+	WRAPPER_INFO(_T("Waiting for the service '%s' to stop."), config->name);
 	DWORD start_tick_count = GetTickCount();
 	DWORD old_check_point = status.dwCheckPoint;
 	while (rc && (status.dwCurrentState == SERVICE_STOP_PENDING))
 	{
-		WRAPPER_INFO(_T("Waiting for the service '%s' to stop."), config->name);
 		const DWORD milliseconds = wrapper_service_get_recommended_wait_time(status.dwWaitHint);
 		Sleep(milliseconds);
 		if (rc)
 		{
 			rc = wrapper_service_get_status(service, &status, config, error);
+		}
+
+		if (rc)
+		{
+			if (status.dwCurrentState != SERVICE_STOP_PENDING)
+			{
+				break;
+			}
 		}
 
 		if (status.dwCheckPoint > old_check_point)
@@ -1378,7 +1386,10 @@ int wrapper_service_wait_to_stop(SC_HANDLE service, wrapper_config_t* config, wr
 		
 		if (GetTickCount() - start_tick_count > status.dwWaitHint)
 		{
-			// Timeout waiting for service to stop
+			if (error)
+			{
+				*error = wrapper_error_from_system(ERROR_TIMEOUT, _T("An timeout occurred while waiting for the service '%s' to stop."), config->name);
+			}
 			rc = 0;
 		}
 	}
@@ -1410,9 +1421,10 @@ int wrapper_service_wait_to_start(const SC_HANDLE service, const wrapper_config_
 
 	DWORD start_tick_count = GetTickCount();
 	DWORD old_check_point = status.dwCheckPoint;
+	WRAPPER_INFO(_T("Waiting for service '%s' to start."), config->name);
+
 	while (rc && (status.dwCurrentState == SERVICE_START_PENDING))
 	{
-		WRAPPER_INFO(_T("Waiting for service '%s' to start."), config->name);
 		const DWORD milliseconds = wrapper_service_get_recommended_wait_time(status.dwWaitHint);
 		Sleep(milliseconds);
 
@@ -1421,19 +1433,28 @@ int wrapper_service_wait_to_start(const SC_HANDLE service, const wrapper_config_
 			rc = wrapper_service_get_status(service, &status, config, error);
 		}
 
+		if (rc)
+		{
+			if(status.dwCurrentState != SERVICE_START_PENDING)
+			{
+				break;
+			}
+		}
+
 		if (status.dwCheckPoint > old_check_point)
 		{
 			// Continue to wait and check.
 			start_tick_count = GetTickCount();
 			old_check_point = status.dwCheckPoint;
 		}
-		else
+		else if (GetTickCount() - start_tick_count > status.dwWaitHint)
 		{
-			if (GetTickCount() - start_tick_count > status.dwWaitHint)
+			if (error)
 			{
-				// Timeout
-				rc = 0;
+				*error = wrapper_error_from_system(ERROR_TIMEOUT, _T("An timeout occurred while waiting for the service '%s' to start."), config->name);
 			}
+			rc = 0;
+			break;
 		}
 	}
 	return rc;
@@ -1507,165 +1528,136 @@ int do_start(wrapper_config_t* config, wrapper_error_t** error)
 	return rc;
 }
 
-//
-// Purpose: 
-//   Stops the service.
-//
-// Parameters:
-//   None
-// 
-// Return value:
-//   None
-//
-int do_stop(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_stop(SC_HANDLE service, wrapper_config_t* config, wrapper_error_t** error)
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
-
-	SERVICE_STATUS_PROCESS ssp;
-	DWORD dwStartTime = GetTickCount();
-	DWORD dwBytesNeeded;
-	DWORD dwTimeout = 30000; // 30-second time-out
-	DWORD dwWaitTime;
-
-	// Get a handle to the SCM database. 
-
-	schSCManager = OpenSCManager(
-		NULL, // local computer
-		NULL, // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS); // full access rights 
-
-	if (NULL == schSCManager)
+	SERVICE_STATUS_PROCESS status = {0};
+	if (!ControlService(service, SERVICE_CONTROL_STOP, (LPSERVICE_STATUS)&status))
 	{
-		printf("OpenSCManager failed (%d)\n", GetLastError());
-		return;
-	}
-
-	// Get a handle to the service.
-
-	schService = OpenService(
-		schSCManager, // SCM database 
-		config->name, // name of service 
-		SERVICE_STOP |
-		SERVICE_QUERY_STATUS |
-		SERVICE_ENUMERATE_DEPENDENTS);
-
-	if (schService == NULL)
-	{
-		printf("OpenService failed (%d)\n", GetLastError());
-		CloseServiceHandle(schSCManager);
-		return;
-	}
-
-	// Make sure the service is not already stopped.
-
-	if (!QueryServiceStatusEx(
-		schService,
-		SC_STATUS_PROCESS_INFO,
-		(LPBYTE)&ssp,
-		sizeof(SERVICE_STATUS_PROCESS),
-		&dwBytesNeeded))
-	{
-		printf("QueryServiceStatusEx failed (%d)\n", GetLastError());
-		goto stop_cleanup;
-	}
-
-	if (ssp.dwCurrentState == SERVICE_STOPPED)
-	{
-		printf("Service is already stopped.\n");
-		goto stop_cleanup;
-	}
-
-	// If a stop is pending, wait for it.
-
-	while (ssp.dwCurrentState == SERVICE_STOP_PENDING)
-	{
-		printf("Service stop pending...\n");
-
-		// Do not wait longer than the wait hint. A good interval is 
-		// one-tenth of the wait hint but not less than 1 second  
-		// and not more than 10 seconds. 
-
-		dwWaitTime = ssp.dwWaitHint / 10;
-
-		if (dwWaitTime < 1000)
-			dwWaitTime = 1000;
-		else if (dwWaitTime > 10000)
-			dwWaitTime = 10000;
-
-		Sleep(dwWaitTime);
-
-		if (!QueryServiceStatusEx(
-			schService,
-			SC_STATUS_PROCESS_INFO,
-			(LPBYTE)&ssp,
-			sizeof(SERVICE_STATUS_PROCESS),
-			&dwBytesNeeded))
+		if (error)
 		{
-			printf("QueryServiceStatusEx failed (%d)\n", GetLastError());
-			goto stop_cleanup;
+			*error = wrapper_error_from_system(GetLastError(), _T("Failed to stop the service '%s'"), config->name);
 		}
-
-		if (ssp.dwCurrentState == SERVICE_STOPPED)
-		{
-			printf("Service stopped successfully.\n");
-			goto stop_cleanup;
-		}
-
-		if (GetTickCount() - dwStartTime > dwTimeout)
-		{
-			printf("Service stop timed out.\n");
-			goto stop_cleanup;
-		}
+		return 0;
 	}
-
-	// If the service is running, dependencies must be stopped first.
-	StopDependentServices(schSCManager, schService);
-
-	// Send a stop code to the service.
-
-	if (!ControlService(
-		schService,
-		SERVICE_CONTROL_STOP,
-		(LPSERVICE_STATUS)&ssp))
-	{
-		printf("ControlService failed (%d)\n", GetLastError());
-		goto stop_cleanup;
-	}
-
-	// Wait for the service to stop.
-
-	while (ssp.dwCurrentState != SERVICE_STOPPED)
-	{
-		Sleep(ssp.dwWaitHint);
-		if (!QueryServiceStatusEx(
-			schService,
-			SC_STATUS_PROCESS_INFO,
-			(LPBYTE)&ssp,
-			sizeof(SERVICE_STATUS_PROCESS),
-			&dwBytesNeeded))
-		{
-			printf("QueryServiceStatusEx failed (%d)\n", GetLastError());
-			goto stop_cleanup;
-		}
-
-		if (ssp.dwCurrentState == SERVICE_STOPPED)
-			break;
-
-		if (GetTickCount() - dwStartTime > dwTimeout)
-		{
-			printf("Wait timed out\n");
-			goto stop_cleanup;
-		}
-	}
-	printf("Service stopped successfully\n");
-
-stop_cleanup:
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
+	return 1;
 }
 
-BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService)
+int wrapper_service_wait_to_stop2(SC_HANDLE service, wrapper_config_t* config, wrapper_error_t** error)
+{
+	int rc = 1;
+	SERVICE_STATUS_PROCESS status;
+
+	if (rc)
+	{
+		rc = wrapper_service_get_status(service, &status, config, error);
+	}
+
+	DWORD start_tick_count = GetTickCount();
+	DWORD old_check_point = status.dwCheckPoint;
+	while (rc && (status.dwCurrentState != SERVICE_STOPPED))
+	{
+		const DWORD milliseconds = wrapper_service_get_recommended_wait_time(status.dwWaitHint);
+		WRAPPER_INFO(_T("Waiting %dms for service '%s' to stop."), milliseconds, config->name);
+		Sleep(milliseconds);
+
+		if (rc)
+		{
+			rc = wrapper_service_get_status(service, &status, config, error);
+		}
+
+		if (rc)
+		{
+			if (status.dwCurrentState == SERVICE_STOPPED)
+			{
+				break;
+			}
+		}
+
+		if (status.dwCheckPoint > old_check_point)
+		{
+			// Continue to wait and check.
+			start_tick_count = GetTickCount();
+			old_check_point = status.dwCheckPoint;
+		}
+		else
+		{
+			if (GetTickCount() - start_tick_count > status.dwWaitHint)
+			{
+				if (error)
+				{
+					*error = wrapper_error_from_system(ERROR_TIMEOUT, _T("An timeout occurred while waiting for the service '%s' to stop."), config->name);
+				}
+				rc = 0;
+				break;
+			}
+		}
+	}
+
+	return rc;
+}
+
+int do_stop(wrapper_config_t* config, wrapper_error_t** error)
+{
+	SC_HANDLE manager = NULL;
+	SC_HANDLE service = NULL;
+
+	int rc = 1;
+	if (rc)
+	{
+		rc = wrapper_service_open_manager(&manager, error);
+	}
+
+	if (rc)
+	{
+		const int desired_access = SERVICE_STOP |
+			SERVICE_QUERY_STATUS |
+			SERVICE_ENUMERATE_DEPENDENTS;
+
+		rc = wrapper_service_open(&service, desired_access, manager, config, error);
+	}
+
+	SERVICE_STATUS_PROCESS status = { 0 };
+	if (rc)
+	{
+		rc = wrapper_service_get_status(service, &status, config, error);
+	}
+
+	if (rc)
+	{
+		if (status.dwCurrentState != SERVICE_STOPPED)
+		{
+			rc = wrapper_service_wait_to_stop(service, config, error);
+
+			if (rc)
+			{
+				rc = wrapper_service_stop(service, config, error);
+			}
+
+			if (rc)
+			{
+				rc = wrapper_service_wait_to_stop2(service, config, error);
+			}
+
+			WRAPPER_INFO(_T("Service '%s' stopped successfully"), config->name);
+		}
+		else
+		{
+			WRAPPER_INFO(_T("Service '%s' is already stopped."), config->name);
+		}
+	}
+
+	if (service)
+	{
+		CloseServiceHandle(service);
+	}
+	if (manager)
+	{
+		CloseServiceHandle(manager);
+	}
+	return rc;
+}
+
+BOOL wrapper_service_stop_dependent_services(SC_HANDLE schSCManager, SC_HANDLE schService)
 {
 	DWORD i;
 	DWORD dwBytesNeeded;
