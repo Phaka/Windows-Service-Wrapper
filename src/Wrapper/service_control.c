@@ -1,3 +1,6 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #include "stdafx.h"
 #include "service_config.h"
 
@@ -13,7 +16,7 @@ BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService);
 // Return value:
 //   None
 //
-int  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
+int do_start(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -27,9 +30,9 @@ int  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
 	// Get a handle to the SCM database. 
 
 	schSCManager = OpenSCManager(
-		NULL,                    // local computer
-		NULL,                    // servicesActive database 
-		SC_MANAGER_ALL_ACCESS);  // full access rights 
+		NULL, // local computer
+		NULL, // servicesActive database 
+		SC_MANAGER_ALL_ACCESS); // full access rights 
 
 	if (NULL == schSCManager)
 	{
@@ -40,9 +43,9 @@ int  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
 	// Get a handle to the service.
 
 	schService = OpenService(
-		schSCManager,         // SCM database 
-		config->name,            // name of service 
-		SERVICE_ALL_ACCESS);  // full access 
+		schSCManager, // SCM database 
+		config->name, // name of service 
+		SERVICE_ALL_ACCESS); // full access 
 
 	if (schService == NULL)
 	{
@@ -52,11 +55,11 @@ int  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
 	}
 
 	if (!QueryServiceStatusEx(
-		schService,                     // handle to service 
-		SC_STATUS_PROCESS_INFO,         // information level
-		(LPBYTE)&ssStatus,             // address of structure
+		schService, // handle to service 
+		SC_STATUS_PROCESS_INFO, // information level
+		(LPBYTE)&ssStatus, // address of structure
 		sizeof(SERVICE_STATUS_PROCESS), // size of structure
-		&dwBytesNeeded))              // size needed if buffer is too small
+		&dwBytesNeeded)) // size needed if buffer is too small
 	{
 		printf("QueryServiceStatusEx failed (%d)\n", GetLastError());
 		CloseServiceHandle(schService);
@@ -97,11 +100,11 @@ int  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
 		// Check the status until the service is no longer stop pending. 
 
 		if (!QueryServiceStatusEx(
-			schService,                     // handle to service 
-			SC_STATUS_PROCESS_INFO,         // information level
-			(LPBYTE)&ssStatus,             // address of structure
+			schService, // handle to service 
+			SC_STATUS_PROCESS_INFO, // information level
+			(LPBYTE)&ssStatus, // address of structure
 			sizeof(SERVICE_STATUS_PROCESS), // size of structure
-			&dwBytesNeeded))              // size needed if buffer is too small
+			&dwBytesNeeded)) // size needed if buffer is too small
 		{
 			printf("QueryServiceStatusEx failed (%d)\n", GetLastError());
 			CloseServiceHandle(schService);
@@ -131,25 +134,25 @@ int  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
 	// Attempt to start the service.
 
 	if (!StartService(
-		schService,  // handle to service 
-		0,           // number of arguments 
-		NULL))      // no arguments 
+		schService, // handle to service 
+		0, // number of arguments 
+		NULL)) // no arguments 
 	{
 		printf("StartService failed (%d)\n", GetLastError());
 		CloseServiceHandle(schService);
 		CloseServiceHandle(schSCManager);
 		return;
 	}
-	else printf("Service start pending...\n");
+	printf("Service start pending...\n");
 
 	// Check the status until the service is no longer start pending. 
 
 	if (!QueryServiceStatusEx(
-		schService,                     // handle to service 
-		SC_STATUS_PROCESS_INFO,         // info level
-		(LPBYTE)&ssStatus,             // address of structure
+		schService, // handle to service 
+		SC_STATUS_PROCESS_INFO, // info level
+		(LPBYTE)&ssStatus, // address of structure
 		sizeof(SERVICE_STATUS_PROCESS), // size of structure
-		&dwBytesNeeded))              // if buffer too small
+		&dwBytesNeeded)) // if buffer too small
 	{
 		printf("QueryServiceStatusEx failed (%d)\n", GetLastError());
 		CloseServiceHandle(schService);
@@ -180,11 +183,11 @@ int  wrapper_service_start(wrapper_config_t* config, wrapper_error_t** error)
 		// Check the status again. 
 
 		if (!QueryServiceStatusEx(
-			schService,             // handle to service 
+			schService, // handle to service 
 			SC_STATUS_PROCESS_INFO, // info level
-			(LPBYTE)&ssStatus,             // address of structure
+			(LPBYTE)&ssStatus, // address of structure
 			sizeof(SERVICE_STATUS_PROCESS), // size of structure
-			&dwBytesNeeded))              // if buffer too small
+			&dwBytesNeeded)) // if buffer too small
 		{
 			printf("QueryServiceStatusEx failed (%d)\n", GetLastError());
 			break;
@@ -242,23 +245,23 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
 
-	EXPLICIT_ACCESS      ea;
-	SECURITY_DESCRIPTOR  sd;
+	EXPLICIT_ACCESS ea;
+	SECURITY_DESCRIPTOR sd;
 	PSECURITY_DESCRIPTOR psd = NULL;
-	PACL                 pacl = NULL;
-	PACL                 pNewAcl = NULL;
-	BOOL                 bDaclPresent = FALSE;
-	BOOL                 bDaclDefaulted = FALSE;
-	DWORD                dwError = 0;
-	DWORD                dwSize = 0;
-	DWORD                dwBytesNeeded = 0;
+	PACL pacl = NULL;
+	PACL pNewAcl = NULL;
+	BOOL bDaclPresent = FALSE;
+	BOOL bDaclDefaulted = FALSE;
+	DWORD dwError = 0;
+	DWORD dwSize = 0;
+	DWORD dwBytesNeeded = 0;
 
 	// Get a handle to the SCM database. 
 
 	schSCManager = OpenSCManager(
-		NULL,                    // local computer
-		NULL,                    // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS);  // full access rights 
+		NULL, // local computer
+		NULL, // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS); // full access rights 
 
 	if (NULL == schSCManager)
 	{
@@ -269,8 +272,8 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 	// Get a handle to the service
 
 	schService = OpenService(
-		schSCManager,              // SCManager database 
-		config->name,                 // name of service 
+		schSCManager, // SCManager database 
+		config->name, // name of service 
 		READ_CONTROL | WRITE_DAC); // access
 
 	if (schService == NULL)
@@ -283,16 +286,16 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 	// Get the current security descriptor.
 
 	if (!QueryServiceObjectSecurity(schService,
-		DACL_SECURITY_INFORMATION,
-		&psd,           // using NULL does not work on all versions
-		0,
-		&dwBytesNeeded))
+	                                DACL_SECURITY_INFORMATION,
+	                                &psd, // using NULL does not work on all versions
+	                                0,
+	                                &dwBytesNeeded))
 	{
 		if (GetLastError() == ERROR_INSUFFICIENT_BUFFER)
 		{
 			dwSize = dwBytesNeeded;
 			psd = (PSECURITY_DESCRIPTOR)HeapAlloc(GetProcessHeap(),
-				HEAP_ZERO_MEMORY, dwSize);
+			                                      HEAP_ZERO_MEMORY, dwSize);
 			if (psd == NULL)
 			{
 				// Note: HeapAlloc does not support GetLastError.
@@ -301,7 +304,7 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 			}
 
 			if (!QueryServiceObjectSecurity(schService,
-				DACL_SECURITY_INFORMATION, psd, dwSize, &dwBytesNeeded))
+			                                DACL_SECURITY_INFORMATION, psd, dwSize, &dwBytesNeeded))
 			{
 				printf("QueryServiceObjectSecurity failed (%d)\n", GetLastError());
 				goto dacl_cleanup;
@@ -317,7 +320,7 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 	// Get the DACL.
 
 	if (!GetSecurityDescriptorDacl(psd, &bDaclPresent, &pacl,
-		&bDaclDefaulted))
+	                               &bDaclDefaulted))
 	{
 		printf("GetSecurityDescriptorDacl failed(%d)\n", GetLastError());
 		goto dacl_cleanup;
@@ -326,8 +329,8 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 	// Build the ACE.
 
 	BuildExplicitAccessWithName(&ea, TEXT("GUEST"),
-		SERVICE_START | SERVICE_STOP | READ_CONTROL | DELETE,
-		SET_ACCESS, NO_INHERITANCE);
+	                            SERVICE_START | SERVICE_STOP | READ_CONTROL | DELETE,
+	                            SET_ACCESS, NO_INHERITANCE);
 
 	dwError = SetEntriesInAcl(1, &ea, pacl, &pNewAcl);
 	if (dwError != ERROR_SUCCESS)
@@ -339,7 +342,7 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 	// Initialize a new security descriptor.
 
 	if (!InitializeSecurityDescriptor(&sd,
-		SECURITY_DESCRIPTOR_REVISION))
+	                                  SECURITY_DESCRIPTOR_REVISION))
 	{
 		printf("InitializeSecurityDescriptor failed(%d)\n", GetLastError());
 		goto dacl_cleanup;
@@ -356,12 +359,11 @@ int wrapper_service_dacl(wrapper_config_t* config, wrapper_error_t** error)
 	// Set the new DACL for the service object.
 
 	if (!SetServiceObjectSecurity(schService,
-		DACL_SECURITY_INFORMATION, &sd))
+	                              DACL_SECURITY_INFORMATION, &sd))
 	{
 		printf("SetServiceObjectSecurity failed(%d)\n", GetLastError());
-		goto dacl_cleanup;
 	}
-	else printf("Service DACL updated successfully\n");
+	printf("Service DACL updated successfully\n");
 
 dacl_cleanup:
 	CloseServiceHandle(schSCManager);
@@ -383,7 +385,7 @@ dacl_cleanup:
 // Return value:
 //   None
 //
-int  wrapper_service_stop(wrapper_config_t* config, wrapper_error_t** error)
+int do_stop(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE schSCManager;
 	SC_HANDLE schService;
@@ -397,9 +399,9 @@ int  wrapper_service_stop(wrapper_config_t* config, wrapper_error_t** error)
 	// Get a handle to the SCM database. 
 
 	schSCManager = OpenSCManager(
-		NULL,                    // local computer
-		NULL,                    // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS);  // full access rights 
+		NULL, // local computer
+		NULL, // ServicesActive database 
+		SC_MANAGER_ALL_ACCESS); // full access rights 
 
 	if (NULL == schSCManager)
 	{
@@ -410,8 +412,8 @@ int  wrapper_service_stop(wrapper_config_t* config, wrapper_error_t** error)
 	// Get a handle to the service.
 
 	schService = OpenService(
-		schSCManager,         // SCM database 
-		config->name,            // name of service 
+		schSCManager, // SCM database 
+		config->name, // name of service 
 		SERVICE_STOP |
 		SERVICE_QUERY_STATUS |
 		SERVICE_ENUMERATE_DEPENDENTS);
@@ -537,90 +539,89 @@ BOOL StopDependentServices(SC_HANDLE schSCManager, SC_HANDLE schService)
 	DWORD dwBytesNeeded;
 	DWORD dwCount;
 
-	LPENUM_SERVICE_STATUS   lpDependencies = NULL;
-	ENUM_SERVICE_STATUS     ess;
-	SC_HANDLE               hDepService;
-	SERVICE_STATUS_PROCESS  ssp;
+	LPENUM_SERVICE_STATUS lpDependencies = NULL;
+	ENUM_SERVICE_STATUS ess;
+	SC_HANDLE hDepService;
+	SERVICE_STATUS_PROCESS ssp;
 
 	DWORD dwStartTime = GetTickCount();
 	DWORD dwTimeout = 30000; // 30-second time-out
 
-							 // Pass a zero-length buffer to get the required buffer size.
+	// Pass a zero-length buffer to get the required buffer size.
 	if (EnumDependentServices(schService, SERVICE_ACTIVE,
-		lpDependencies, 0, &dwBytesNeeded, &dwCount))
+	                          lpDependencies, 0, &dwBytesNeeded, &dwCount))
 	{
 		// If the Enum call succeeds, then there are no dependent
 		// services, so do nothing.
 		return TRUE;
 	}
-	else
+	if (GetLastError() != ERROR_MORE_DATA)
+		return FALSE; // Unexpected error
+
+	// Allocate a buffer for the dependencies.
+	lpDependencies = (LPENUM_SERVICE_STATUS)HeapAlloc(
+		GetProcessHeap(), HEAP_ZERO_MEMORY, dwBytesNeeded);
+
+	if (!lpDependencies)
+		return FALSE;
+
+	__try
 	{
-		if (GetLastError() != ERROR_MORE_DATA)
-			return FALSE; // Unexpected error
-
-						  // Allocate a buffer for the dependencies.
-		lpDependencies = (LPENUM_SERVICE_STATUS)HeapAlloc(
-			GetProcessHeap(), HEAP_ZERO_MEMORY, dwBytesNeeded);
-
-		if (!lpDependencies)
+		// Enumerate the dependencies.
+		if (!EnumDependentServices(schService, SERVICE_ACTIVE,
+		                           lpDependencies, dwBytesNeeded, &dwBytesNeeded,
+		                           &dwCount))
 			return FALSE;
 
-		__try {
-			// Enumerate the dependencies.
-			if (!EnumDependentServices(schService, SERVICE_ACTIVE,
-				lpDependencies, dwBytesNeeded, &dwBytesNeeded,
-				&dwCount))
+		for (i = 0; i < dwCount; i++)
+		{
+			ess = *(lpDependencies + i);
+			// Open the service.
+			hDepService = OpenService(schSCManager,
+			                          ess.lpServiceName,
+			                          SERVICE_STOP | SERVICE_QUERY_STATUS);
+
+			if (!hDepService)
 				return FALSE;
 
-			for (i = 0; i < dwCount; i++)
+			__try
 			{
-				ess = *(lpDependencies + i);
-				// Open the service.
-				hDepService = OpenService(schSCManager,
-					ess.lpServiceName,
-					SERVICE_STOP | SERVICE_QUERY_STATUS);
-
-				if (!hDepService)
+				// Send a stop code.
+				if (!ControlService(hDepService,
+				                    SERVICE_CONTROL_STOP,
+				                    (LPSERVICE_STATUS)&ssp))
 					return FALSE;
 
-				__try {
-					// Send a stop code.
-					if (!ControlService(hDepService,
-						SERVICE_CONTROL_STOP,
-						(LPSERVICE_STATUS)&ssp))
+				// Wait for the service to stop.
+				while (ssp.dwCurrentState != SERVICE_STOPPED)
+				{
+					Sleep(ssp.dwWaitHint);
+					if (!QueryServiceStatusEx(
+						hDepService,
+						SC_STATUS_PROCESS_INFO,
+						(LPBYTE)&ssp,
+						sizeof(SERVICE_STATUS_PROCESS),
+						&dwBytesNeeded))
 						return FALSE;
 
-					// Wait for the service to stop.
-					while (ssp.dwCurrentState != SERVICE_STOPPED)
-					{
-						Sleep(ssp.dwWaitHint);
-						if (!QueryServiceStatusEx(
-							hDepService,
-							SC_STATUS_PROCESS_INFO,
-							(LPBYTE)&ssp,
-							sizeof(SERVICE_STATUS_PROCESS),
-							&dwBytesNeeded))
-							return FALSE;
+					if (ssp.dwCurrentState == SERVICE_STOPPED)
+						break;
 
-						if (ssp.dwCurrentState == SERVICE_STOPPED)
-							break;
-
-						if (GetTickCount() - dwStartTime > dwTimeout)
-							return FALSE;
-					}
-				}
-				__finally
-				{
-					// Always release the service handle.
-					CloseServiceHandle(hDepService);
+					if (GetTickCount() - dwStartTime > dwTimeout)
+						return FALSE;
 				}
 			}
+			__finally
+			{
+				// Always release the service handle.
+				CloseServiceHandle(hDepService);
+			}
 		}
-		__finally
-		{
-			// Always free the enumeration buffer.
-			HeapFree(GetProcessHeap(), 0, lpDependencies);
-		}
+	}
+	__finally
+	{
+		// Always free the enumeration buffer.
+		HeapFree(GetProcessHeap(), 0, lpDependencies);
 	}
 	return TRUE;
 }

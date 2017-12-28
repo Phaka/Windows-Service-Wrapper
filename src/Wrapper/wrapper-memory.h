@@ -1,3 +1,6 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #pragma once
 
 void* wrapper_allocate(size_t size);

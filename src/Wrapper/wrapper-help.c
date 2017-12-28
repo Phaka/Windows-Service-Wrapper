@@ -1,3 +1,6 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #include "stdafx.h"
 #include "wrapper-help.h"
 #include "wrapper-memory.h"
@@ -20,10 +23,10 @@ int wrapper_command_get_executable_name(TCHAR* destination, size_t size, wrapper
 	return 1;
 }
 
-int wrapper_help(wrapper_config_t* config, wrapper_error_t** error)
+int do_help(wrapper_config_t* config, wrapper_error_t** error)
 {
 	int rc = 1;
-	TCHAR *name = wrapper_allocate_string(_MAX_PATH);
+	TCHAR* name = wrapper_allocate_string(_MAX_PATH);
 	if (!name)
 	{
 		if (error)
@@ -51,7 +54,8 @@ int wrapper_help(wrapper_config_t* config, wrapper_error_t** error)
 
 		_ftprintf(stdout, _T("\n"));
 		_ftprintf(stdout, _T("Options:\n"));
-		_ftprintf(stdout, _T("  %-15s %s\n"), _T("--nologo"), _T("Suppress the display the startup banner and copyright message."));
+		_ftprintf(stdout, _T("  %-15s %s\n"), _T("--nologo"),
+		          _T("Suppress the display the startup banner and copyright message."));
 		_ftprintf(stdout, _T("\n"));
 	}
 

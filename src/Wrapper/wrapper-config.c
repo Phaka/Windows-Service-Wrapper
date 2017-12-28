@@ -1,3 +1,6 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #include "stdafx.h"
 #include "wrapper-error.h"
 #include "wrapper-config.h"
@@ -15,7 +18,7 @@ wrapper_config_t* wrapper_config_alloc(void)
 		config->working_directory = LocalAlloc(LPTR, sizeof(TCHAR) * (WRAPPER_SERVICE_WORKDIR_MAX_LEN + 1));
 
 		// If any member is NULL, then we do not have sufficient memory. 
-		if(!config->name || !config->title || !config->description || !config->command_line || !config->working_directory)
+		if (!config->name || !config->title || !config->description || !config->command_line || !config->working_directory)
 		{
 			wrapper_config_free(config);
 			config = NULL;
@@ -86,12 +89,13 @@ int wrapper_config_read_string(
 	if (default_value && ERROR_FILE_NOT_FOUND == last_error)
 	{
 		StringCbCopy(buffer, size, default_value);
-		return 1; 
+		return 1;
 	}
-		
+
 	if (error)
 	{
-		*error = wrapper_error_from_system(last_error, _T("Unable to read the value of '%s' in section '%s' of configuration file '%s'"), key, section, path);
+		*error = wrapper_error_from_system(
+			last_error, _T("Unable to read the value of '%s' in section '%s' of configuration file '%s'"), key, section, path);
 	}
 	return 0;
 }
@@ -110,27 +114,32 @@ int wrapper_config_read(TCHAR* path, wrapper_config_t* config, wrapper_error_t**
 
 	TCHAR* section_name = _T("Unit");
 
-	if(!wrapper_config_read_string(config->name, WRAPPER_SERVICE_NAME_MAX_LEN, section_name, _T("Name"), NULL, path, error))
+	if (!wrapper_config_read_string(config->name, WRAPPER_SERVICE_NAME_MAX_LEN, section_name, _T("Name"), NULL, path,
+	                                error))
 	{
 		return 0;
 	}
 
-	if(!wrapper_config_read_string(config->title, WRAPPER_SERVICE_TITLE_MAX_LEN, section_name, _T("Title"), config->name, path, error))
+	if (!wrapper_config_read_string(config->title, WRAPPER_SERVICE_TITLE_MAX_LEN, section_name, _T("Title"), config->name,
+	                                path, error))
 	{
 		return 0;
 	}
 
-	if(!wrapper_config_read_string(config->description, WRAPPER_SERVICE_DESCRIPTION_MAX_LEN, section_name, _T("Description"), EMPTY_STRING, path, error))
+	if (!wrapper_config_read_string(config->description, WRAPPER_SERVICE_DESCRIPTION_MAX_LEN, section_name,
+	                                _T("Description"), EMPTY_STRING, path, error))
 	{
 		return 0;
 	}
 
-	if(!wrapper_config_read_string(config->command_line, WRAPPER_SERVICE_CMDLINE_MAX_LEN, section_name, _T("CommandLine"), NULL, path, error))
+	if (!wrapper_config_read_string(config->command_line, WRAPPER_SERVICE_CMDLINE_MAX_LEN, section_name, _T("CommandLine"),
+	                                NULL, path, error))
 	{
 		return 0;
 	}
 
-	if(!wrapper_config_read_string(config->working_directory, WRAPPER_SERVICE_WORKDIR_MAX_LEN, section_name, _T("WorkingDirectory"), EMPTY_STRING, path, error))
+	if (!wrapper_config_read_string(config->working_directory, WRAPPER_SERVICE_WORKDIR_MAX_LEN, section_name,
+	                                _T("WorkingDirectory"), EMPTY_STRING, path, error))
 	{
 		return 0;
 	}

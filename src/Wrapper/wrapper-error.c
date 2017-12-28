@@ -1,9 +1,11 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #include "stdafx.h"
 #include "wrapper-error.h"
 #include "wrapper-log.h"
 
 #define ERRMSGBUFFERSIZE 256
-
 
 
 HLOCAL wrapper_error_format_message(DWORD dwErrorMsgId)
@@ -72,7 +74,7 @@ HLOCAL wrapper_error_format_message(DWORD dwErrorMsgId)
 }
 
 
-wrapper_error_t *wrapper_error_from_system(DWORD code, TCHAR* format, ...)
+wrapper_error_t* wrapper_error_from_system(DWORD code, TCHAR* format, ...)
 {
 	va_list args;
 	wrapper_error_t* error = NULL;
@@ -81,7 +83,7 @@ wrapper_error_t *wrapper_error_from_system(DWORD code, TCHAR* format, ...)
 	{
 		error->code = HRESULT_FROM_WIN32(code);
 		error->message = wrapper_error_format_message(code);
-		error->user_message = LocalAlloc(LPTR, 4096*sizeof(TCHAR));
+		error->user_message = LocalAlloc(LPTR, 4096 * sizeof(TCHAR));
 		va_start(args, format);
 		_vsntprintf_s(error->user_message, 4096, _TRUNCATE, format, args);
 		va_end(args);
@@ -89,7 +91,7 @@ wrapper_error_t *wrapper_error_from_system(DWORD code, TCHAR* format, ...)
 	return error;
 }
 
-wrapper_error_t *wrapper_error_from_hresult(long code, TCHAR* format, ...)
+wrapper_error_t* wrapper_error_from_hresult(long code, TCHAR* format, ...)
 {
 	va_list args;
 	wrapper_error_t* error = NULL;
@@ -106,7 +108,7 @@ wrapper_error_t *wrapper_error_from_hresult(long code, TCHAR* format, ...)
 	return error;
 }
 
-void wrapper_error_free(wrapper_error_t * error)
+void wrapper_error_free(wrapper_error_t* error)
 {
 	if (error)
 	{
@@ -116,7 +118,7 @@ void wrapper_error_free(wrapper_error_t * error)
 	}
 }
 
-void wrapper_error_log(wrapper_error_t * error)
+void wrapper_error_log(wrapper_error_t* error)
 {
 	if (error)
 	{

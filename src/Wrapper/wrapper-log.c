@@ -1,32 +1,36 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #include "stdafx.h"
 #include "wrapper-log.h"
 #include "wrapper-error.h"
 
 static wrapper_log_func_t func = wrapper_log_console_handler;
-static void *data;
+static void* data;
 
-void wrapper_log_set_handler(wrapper_log_func_t log_func, void *user_data)
+void wrapper_log_set_handler(wrapper_log_func_t log_func, void* user_data)
 {
 	func = log_func;
 	data = user_data;
 }
 
-void _wrapper_log_get_handler(wrapper_log_func_t *log_func, void **user_data)
+void _wrapper_log_get_handler(wrapper_log_func_t* log_func, void** user_data)
 {
 	*log_func = func;
 	*user_data = data;
 }
 
 void wrapper_log(wrapper_log_level_t log_level,
-	const TCHAR *log_domain,
-	const TCHAR *format,
-	...)
+                 const TCHAR* log_domain,
+                 const TCHAR* format,
+                 ...)
 {
 	va_list args;
 	const size_t message_size = 1024;
-	TCHAR *message;
+	TCHAR* message;
 
-	if (!func) {
+	if (!func)
+	{
 		return;
 	}
 
@@ -36,14 +40,15 @@ void wrapper_log(wrapper_log_level_t log_level,
 	va_end(args);
 
 	func(log_level, log_domain, message, data);
-	
+
 	LocalFree(message);
 }
 
 
-const TCHAR *wrapper_log_level_str(wrapper_log_level_t log_level)
+const TCHAR* wrapper_log_level_str(wrapper_log_level_t log_level)
 {
-	switch (log_level) {
+	switch (log_level)
+	{
 	case WRAPPER_LOG_LEVEL_ERROR:
 		return _T("ERROR");
 	case WRAPPER_LOG_LEVEL_CRITICAL:
@@ -67,12 +72,13 @@ const TCHAR *wrapper_log_level_str(wrapper_log_level_t log_level)
 #define DELTA_EPOCH_IN_MICROSECS  11644473600000000Ui64
 
 void wrapper_log_console_handler(wrapper_log_level_t log_level,
-	const TCHAR *log_domain,
-	const TCHAR *message,
-	void *user_data)
+                                 const TCHAR* log_domain,
+                                 const TCHAR* message,
+                                 void* user_data)
 {
-	FILE *stream;
-	switch (log_level) {
+	FILE* stream;
+	switch (log_level)
+	{
 	case WRAPPER_LOG_LEVEL_ERROR:
 	case WRAPPER_LOG_LEVEL_CRITICAL:
 	case WRAPPER_LOG_LEVEL_WARNING:
@@ -90,7 +96,7 @@ void wrapper_log_console_handler(wrapper_log_level_t log_level,
 	{
 		_ftprintf(stream, _T("%s: %s\n"), wrapper_log_level_str(log_level), message);
 	}
-	else 
+	else
 	{
 		_ftprintf(stream, _T("%s\n"), message);
 	}
@@ -98,22 +104,22 @@ void wrapper_log_console_handler(wrapper_log_level_t log_level,
 
 
 void wrapper_log_file_handler(wrapper_log_level_t log_level,
-	const TCHAR *log_domain,
-	const TCHAR *message,
-	void *user_data)
+                              const TCHAR* log_domain,
+                              const TCHAR* message,
+                              void* user_data)
 {
 	FILETIME ft;
 	struct timeval tv;
 	struct tm tt;
 	time_t t;
-	FILE *stream;
+	FILE* stream;
 	TCHAR nowstr[32];
 	int pid;
-	TCHAR buf[128] = { 0 };
-	TCHAR duration[128] = { 0 };
-	TCHAR time[128] = { 0 };
+	TCHAR buf[128] = {0};
+	TCHAR duration[128] = {0};
+	TCHAR time[128] = {0};
 
-	SYSTEMTIME lt = { 0 };
+	SYSTEMTIME lt = {0};
 
 	GetSystemTimeAsFileTime(&ft);
 	unsigned __int64 tmpres = 0;
@@ -122,19 +128,19 @@ void wrapper_log_file_handler(wrapper_log_level_t log_level,
 	tmpres |= ft.dwLowDateTime;
 	/*converting file time to unix epoch*/
 	tmpres -= DELTA_EPOCH_IN_MICROSECS;
-	tmpres /= 10;  /*convert into microseconds*/
+	tmpres /= 10; /*convert into microseconds*/
 	tv.tv_sec = (long)(tmpres / 1000000UL);
 	tv.tv_usec = (long)(tmpres % 1000000UL);
 	t = tv.tv_sec;
 
 	GetSystemTime(&lt);
 	int r = GetDateFormatEx(
-		LOCALE_NAME_USER_DEFAULT, 
+		LOCALE_NAME_USER_DEFAULT,
 		0,
-		&lt, 
-		_T("yyyy/MM/dd"), 
-		buf, 
-		sizeof(buf) / sizeof(buf[0]), 
+		&lt,
+		_T("yyyy/MM/dd"),
+		buf,
+		sizeof buf / sizeof buf[0],
 		NULL);
 	if (r == 0)
 	{
@@ -152,7 +158,7 @@ void wrapper_log_file_handler(wrapper_log_level_t log_level,
 		&lt,
 		_T("HH:mm:ss"),
 		time,
-		sizeof(time) / sizeof(time[0]));
+		sizeof time / sizeof time[0]);
 	if (s == 0)
 	{
 		DWORD last_error = GetLastError();
@@ -170,13 +176,13 @@ void wrapper_log_file_handler(wrapper_log_level_t log_level,
 	{
 		pid = (int)GetProcessId(NULL);
 		_ftprintf(stream,
-			_T("%s %s: [%5d]: %8s: %12s: %s\n"),
-			buf,
-			time,
-			pid,
-			wrapper_log_level_str(log_level),
-			log_domain,
-			message);
+		          _T("%s %s: [%5d]: %8s: %12s: %s\n"),
+		          buf,
+		          time,
+		          pid,
+		          wrapper_log_level_str(log_level),
+		          log_domain,
+		          message);
 
 		fclose(stream);
 	}

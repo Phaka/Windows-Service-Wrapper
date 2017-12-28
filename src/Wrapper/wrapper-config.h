@@ -1,3 +1,6 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #pragma once
 
 #define WRAPPER_SERVICE_NAME_MAX_LEN 256
@@ -10,13 +13,13 @@
 
 #include "wrapper-error.h"
 
-typedef struct wrapper_config_t 
+typedef struct wrapper_config_t
 {
-	TCHAR *name;
-	TCHAR *command_line;
-	TCHAR *title;
-	TCHAR *description;
-	TCHAR *working_directory;
+	TCHAR* name;
+	TCHAR* command_line;
+	TCHAR* title;
+	TCHAR* description;
+	TCHAR* working_directory;
 } wrapper_config_t;
 
 wrapper_config_t* wrapper_config_alloc(void);

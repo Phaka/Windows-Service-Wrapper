@@ -605,7 +605,7 @@ int wrapper_log_get_path(TCHAR* destination, const size_t size, wrapper_config_t
 	return 1;
 }
 
-int wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
+int do_run(wrapper_config_t* config, wrapper_error_t** error)
 {
 	HRESULT hr = S_OK;
 	TCHAR* log_path = NULL;
@@ -789,7 +789,7 @@ int wrapper_service_create(SC_HANDLE* service, const SC_HANDLE manager, wrapper_
 // Return value:
 //   None
 //
-int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
+int do_install(wrapper_config_t* config, wrapper_error_t** error)
 {
 	int rc = 1;
 	SC_HANDLE service = NULL;
@@ -967,7 +967,7 @@ int wrapper_service_get_description(LPSERVICE_DESCRIPTION* service_description, 
 // Return value:
 //   None
 //
-int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
+int do_status(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE manager = NULL;
 	SC_HANDLE service = NULL;
@@ -1020,10 +1020,49 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 
 	if (service)
 		CloseServiceHandle(service);
-	
+
 	if (manager)
 		CloseServiceHandle(manager);
 
+	return rc;
+}
+
+int wrapper_service_set_start_type(const SC_HANDLE service, int start_type, wrapper_config_t* config,
+                                   wrapper_error_t** error)
+{
+	int rc = 1;
+	if (rc)
+	{
+		const unsigned service_type = SERVICE_NO_CHANGE;
+		unsigned error_control = SERVICE_NO_CHANGE;
+		void* binary_path_name = NULL;
+		void* load_order_group = NULL;
+		void* tag_id = NULL;
+		void* dependencies = NULL;
+		void* username = NULL;
+		void* password = NULL;
+		void* display_name = NULL;
+
+		if (!ChangeServiceConfig(
+			service,
+			service_type,
+			start_type,
+			error_control,
+			binary_path_name,
+			load_order_group,
+			tag_id,
+			dependencies,
+			username,
+			password,
+			display_name))
+		{
+			if (error)
+			{
+				*error = wrapper_error_from_system(GetLastError(), _T("Failed to disable service '%s'"), config->name);
+			}
+			rc = 0;
+		}
+	}
 	return rc;
 }
 
@@ -1037,62 +1076,42 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-int wrapper_service_disable(wrapper_config_t* config, wrapper_error_t** error)
+int do_disable(wrapper_config_t* config, wrapper_error_t** error)
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
+	SC_HANDLE manager = NULL;
+	SC_HANDLE service = NULL;
 
-	// Get a handle to the SCM database. 
-
-	schSCManager = OpenSCManager(
-		NULL, // local computer
-		NULL, // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS); // full access rights 
-
-	if (NULL == schSCManager)
+	int rc = 1;
+	if (rc)
 	{
-		printf("OpenSCManager failed (%d)\n", GetLastError());
-		return;
+		rc = wrapper_service_open_manager(&manager, error);
 	}
 
-	// Get a handle to the service.
-
-	schService = OpenService(
-		schSCManager, // SCM database 
-		config->name, // name of service 
-		SERVICE_CHANGE_CONFIG); // need change config access 
-
-	if (schService == NULL)
+	if (rc)
 	{
-		printf("OpenService failed (%d)\n", GetLastError());
-		CloseServiceHandle(schSCManager);
-		return;
+		rc = wrapper_service_open(&service, SERVICE_CHANGE_CONFIG, manager, config, error);
 	}
 
-	// Change the service start type.
-
-	if (!ChangeServiceConfig(
-		schService, // handle of service 
-		SERVICE_NO_CHANGE, // service type: no change 
-		SERVICE_DISABLED, // service start type 
-		SERVICE_NO_CHANGE, // error control: no change 
-		NULL, // binary path: no change 
-		NULL, // load order group: no change 
-		NULL, // tag ID: no change 
-		NULL, // dependencies: no change 
-		NULL, // account name: no change 
-		NULL, // password: no change 
-		NULL)) // display name: no change
+	if (rc)
 	{
-		printf("ChangeServiceConfig failed (%d)\n", GetLastError());
+		rc = wrapper_service_set_start_type(service, SERVICE_DISABLED, config, error);
 	}
-	else
-		printf("Service disabled successfully.\n");
 
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
+	if (rc)
+	{
+		WRAPPER_INFO(_T("Successfully disabled service '%s'"), config->name);
+	}
 
-	return 1;
+	if (service)
+	{
+		CloseServiceHandle(service);
+	}
+
+	if (manager)
+	{
+		CloseServiceHandle(manager);
+	}
+	return rc;
 }
 
 //
@@ -1105,128 +1124,111 @@ int wrapper_service_disable(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-int wrapper_service_enable(wrapper_config_t* config, wrapper_error_t** error)
+int do_enable(wrapper_config_t* config, wrapper_error_t** error)
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
+	SC_HANDLE manager = NULL;
+	SC_HANDLE service = NULL;
 
-	// Get a handle to the SCM database. 
-
-	schSCManager = OpenSCManager(
-		NULL, // local computer
-		NULL, // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS); // full access rights 
-
-	if (NULL == schSCManager)
+	int rc = 1;
+	if (rc)
 	{
-		printf("OpenSCManager failed (%d)\n", GetLastError());
-		return;
+		rc = wrapper_service_open_manager(&manager, error);
 	}
 
-	// Get a handle to the service.
-
-	schService = OpenService(
-		schSCManager, // SCM database 
-		config->name, // name of service 
-		SERVICE_CHANGE_CONFIG); // need change config access 
-
-	if (schService == NULL)
+	if (rc)
 	{
-		printf("OpenService failed (%d)\n", GetLastError());
-		CloseServiceHandle(schSCManager);
-		return;
+		rc = wrapper_service_open(&service, SERVICE_CHANGE_CONFIG, manager, config, error);
 	}
 
-	// Change the service start type.
-
-	if (!ChangeServiceConfig(
-		schService, // handle of service 
-		SERVICE_NO_CHANGE, // service type: no change 
-		SERVICE_DEMAND_START, // service start type 
-		SERVICE_NO_CHANGE, // error control: no change 
-		NULL, // binary path: no change 
-		NULL, // load order group: no change 
-		NULL, // tag ID: no change 
-		NULL, // dependencies: no change 
-		NULL, // account name: no change 
-		NULL, // password: no change 
-		NULL)) // display name: no change
+	if (rc)
 	{
-		printf("ChangeServiceConfig failed (%d)\n", GetLastError());
+		rc = wrapper_service_set_start_type(service, SERVICE_DEMAND_START, config, error);
 	}
-	else
-		printf("Service enabled successfully.\n");
 
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
+	if (rc)
+	{
+		WRAPPER_INFO(_T("Successfully enabled service '%s'"), config->name);
+	}
 
-	return 1;
+	if (service)
+	{
+		CloseServiceHandle(service);
+	}
+
+	if (manager)
+	{
+		CloseServiceHandle(manager);
+	}
+	return rc;
 }
 
-//
-// Purpose: 
-//   Updates the service description to "This is a test description".
-//
-// Parameters:
-//   None
-// 
-// Return value:
-//   None
-//
-int wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_set_description(SC_HANDLE service, wrapper_config_t* config, wrapper_error_t** error)
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
-	SERVICE_DESCRIPTION sd;
-	LPTSTR szDesc = config->description;
-
-	// Get a handle to the SCM database. 
-
-	schSCManager = OpenSCManager(
-		NULL, // local computer
-		NULL, // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS); // full access rights 
-
-	if (NULL == schSCManager)
+	int rc = 1;
+	SERVICE_DESCRIPTION service_description = {0};
+	service_description.lpDescription = config->description;
+	if (!ChangeServiceConfig2(service, SERVICE_CONFIG_DESCRIPTION, &service_description))
 	{
-		printf("OpenSCManager failed (%d)\n", GetLastError());
-		return;
+		if (error)
+		{
+			*error = wrapper_error_from_system(GetLastError(), _T("Failed to set the description of service '%s'"),
+			                                   config->name);
+		}
+		rc = 0;
+	}
+	return rc;
+}
+
+int do_update(wrapper_config_t* config, wrapper_error_t** error)
+{
+	SC_HANDLE manager = NULL;
+	SC_HANDLE service = NULL;
+
+	int rc = 1;
+	if (rc)
+	{
+		rc = wrapper_service_open_manager(&manager, error);
 	}
 
-	// Get a handle to the service.
-
-	schService = OpenService(
-		schSCManager, // SCM database 
-		config->name, // name of service 
-		SERVICE_CHANGE_CONFIG); // need change config access 
-
-	if (schService == NULL)
+	if (rc)
 	{
-		printf("OpenService failed (%d)\n", GetLastError());
-		CloseServiceHandle(schSCManager);
-		return;
+		rc = wrapper_service_open(&service, SERVICE_CHANGE_CONFIG, manager, config, error);
 	}
 
-	// Change the service description.
-
-	sd.lpDescription = szDesc;
-
-	if (!ChangeServiceConfig2(
-		schService, // handle to service
-		SERVICE_CONFIG_DESCRIPTION, // change: description
-		&sd)) // new description
+	if (rc)
 	{
-		printf("ChangeServiceConfig2 failed\n");
-	}
-	else
-	{
-		printf("Service description updated successfully.\n");
+		rc = wrapper_service_set_description(service, config, error);
 	}
 
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
+	if (rc)
+	{
+		WRAPPER_INFO(_T("Successfully changed the description of service '%s'"), config->name);
+	}
 
-	return 1;
+	if (service)
+	{
+		CloseServiceHandle(service);
+	}
+
+	if (manager)
+	{
+		CloseServiceHandle(manager);
+	}
+	return rc;
+}
+
+int wrapper_service_delete2(SC_HANDLE service, wrapper_config_t* config, wrapper_error_t** error)
+{
+	int rc = 1;
+	if (!DeleteService(service))
+	{
+		if (error)
+		{
+			*error = wrapper_error_from_system(GetLastError(), _T("Failed to delete service '%s'"), config->name);
+		}
+		rc = 0;
+	}
+	return rc;
 }
 
 //
@@ -1239,50 +1241,41 @@ int wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
 // Return value:
 //   None
 //
-int wrapper_service_delete(wrapper_config_t* config, wrapper_error_t** error)
+int do_delete(wrapper_config_t* config, wrapper_error_t** error)
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
-	SERVICE_STATUS ssStatus;
+	SC_HANDLE manager = NULL;
+	SC_HANDLE service = NULL;
 
-	// Get a handle to the SCM database. 
-
-	schSCManager = OpenSCManager(
-		NULL, // local computer
-		NULL, // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS); // full access rights 
-
-	if (NULL == schSCManager)
+	int rc = 1;
+	if (rc)
 	{
-		printf("OpenSCManager failed (%d)\n", GetLastError());
-		return;
+		rc = wrapper_service_open_manager(&manager, error);
 	}
 
-	// Get a handle to the service.
-
-	schService = OpenService(
-		schSCManager, // SCM database 
-		config->name, // name of service 
-		DELETE); // need delete access 
-
-	if (schService == NULL)
+	if (rc)
 	{
-		printf("OpenService failed (%d)\n", GetLastError());
-		CloseServiceHandle(schSCManager);
-		return;
+		rc = wrapper_service_open(&service, SERVICE_CHANGE_CONFIG, manager, config, error);
 	}
 
-	// Delete the service.
-
-	if (!DeleteService(schService))
+	if (rc)
 	{
-		printf("DeleteService failed (%d)\n", GetLastError());
+		rc = wrapper_service_delete2(service, config, error);
 	}
-	else
-		printf("Service deleted successfully\n");
 
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
+	if (rc)
+	{
+		WRAPPER_INFO(_T("Successfully deleted service '%s'"), config->name);
+	}
 
-	return 1;
+	if (service)
+	{
+		CloseServiceHandle(service);
+	}
+
+	if (manager)
+	{
+		CloseServiceHandle(manager);
+	}
+
+	return rc;
 }

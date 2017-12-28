@@ -1,3 +1,6 @@
+// Copyright (c) Werner Strydom. All rights reserved.
+// Licensed under the MIT license. See LICENSE in the project root for license information.
+
 #include "stdafx.h"
 #include "wrapper-string.h"
 #include "wrapper-memory.h"
@@ -18,10 +21,10 @@ void wrapper_string_trim_right(TCHAR* chars)
 
 void wrapper_string_copy(TCHAR* destination, const int destination_max_size, TCHAR* source)
 {
-	StringCbCopy(destination, destination_max_size*sizeof(TCHAR), source);
+	StringCbCopy(destination, destination_max_size * sizeof(TCHAR), source);
 }
 
-int wrapper_string_duplicate(TCHAR **result, TCHAR* source, wrapper_error_t** error)
+int wrapper_string_duplicate(TCHAR** result, TCHAR* source, wrapper_error_t** error)
 {
 	const int length = _tcslen(source) + 1;
 	*result = wrapper_allocate_string(length);
@@ -36,5 +39,5 @@ int wrapper_string_duplicate(TCHAR **result, TCHAR* source, wrapper_error_t** er
 	{
 		wrapper_string_copy(*result, length, source);
 	}
-	return ((*result) != NULL);
+	return *result != NULL;
 }
