@@ -85,16 +85,12 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="messages.mc">
-      <Filter>Resource Files</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <ResourceCompile Include="messages.rc">
-      <Filter>Resource Files</Filter>
-    </ResourceCompile>
     <ResourceCompile Include="wrapper-resources.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="wrapper.cfg" />
+    <None Include="messages.mc" />
   </ItemGroup>
 </Project>

@@ -220,11 +220,18 @@
     <Content Include="wrapper.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Include="messages.mc" />
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="messages.rc" />
+    <MessageCompile Include="messages.mc">
+      <GenerateBaselineResource>true</GenerateBaselineResource>
+    </MessageCompile>
+  </ItemGroup>
+  <ItemGroup>
     <ResourceCompile Include="wrapper-resources.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="messages.mc" />
+    <None Include="wrapper.cfg" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
