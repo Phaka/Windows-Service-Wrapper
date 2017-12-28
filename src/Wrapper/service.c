@@ -158,7 +158,6 @@ VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 
 	if (SUCCEEDED(hr))
 	{
-
 		wrapper_service_init(config, &error);
 	}
 	else
@@ -549,13 +548,14 @@ VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl)
 			if (stop_event)
 			{
 				WRAPPER_INFO(_T("Received stop request from the service manager."));
-				if(SetEvent(stop_event))
+				if (SetEvent(stop_event))
 				{
 					WRAPPER_INFO(_T("Succesfully set the event '%s'."), stop_event_name);
 				}
 				else
 				{
-					error = wrapper_error_from_system(GetLastError(), _T("Failed to set the event '%s'. The service may not stop."), stop_event_name);
+					error = wrapper_error_from_system(GetLastError(), _T("Failed to set the event '%s'. The service may not stop."),
+					                                  stop_event_name);
 				}
 				CloseHandle(stop_event);
 			}
@@ -583,7 +583,7 @@ VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl)
 int wrapper_log_get_path(TCHAR* destination, const size_t size, wrapper_config_t* config, wrapper_error_t** error)
 {
 	HRESULT hr = S_OK;
-	if(!GetModuleFileName(NULL, destination, size))
+	if (!GetModuleFileName(NULL, destination, size))
 	{
 		hr = HRESULT_FROM_WIN32(GetLastError());
 		if (error)
@@ -649,7 +649,7 @@ int wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
 				*error = wrapper_error_from_hresult(hr, _T("Failed to start the service '%s'."), config->name);
 			}
 		}
-		else 
+		else
 		{
 			WRAPPER_INFO(_T("Done"));
 		}
@@ -690,11 +690,11 @@ int wrapper_service_open_manager(SC_HANDLE* manager, wrapper_error_t** error)
 	return rc;
 }
 
-int wrapper_service_create(SC_HANDLE* service, const SC_HANDLE manager, const wrapper_config_t* config,
+int wrapper_service_create(SC_HANDLE* service, const SC_HANDLE manager, wrapper_config_t* config,
                            wrapper_error_t** error)
 {
 	int rc = 1;
-	TCHAR *path = NULL;
+	TCHAR* path = NULL;
 	TCHAR* service_name = NULL;
 	TCHAR* display_name = NULL;
 
@@ -747,25 +747,26 @@ int wrapper_service_create(SC_HANDLE* service, const SC_HANDLE manager, const wr
 		const int error_control = SERVICE_ERROR_NORMAL;
 
 		*service = CreateService(
-			manager,  
-			service_name,  
+			manager,
+			service_name,
 			display_name,
 			desired_access,
 			service_type,
 			start_type,
-			error_control,  
+			error_control,
 			path,
 			load_order_group,
 			tag_id,
 			dependencies,
 			username,
-			password);  
+			password);
 
 		if (*service == NULL)
 		{
 			if (error)
 			{
-				*error = wrapper_error_from_system(GetLastError(), _T("Failed to create service '%s' (%s)"), service_name, display_name);
+				*error = wrapper_error_from_system(GetLastError(), _T("Failed to create service '%s' (%s)"), service_name,
+				                                   display_name);
 			}
 			rc = 0;
 		}
@@ -802,10 +803,11 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 	if (rc)
 	{
 		rc = wrapper_service_create(&service, manager, config, error);
-		if(rc) 
-		{
-			WRAPPER_INFO(_T("The service '%s' was successfully installed"), config->name);
-		}
+	}
+
+	if (rc)
+	{
+		WRAPPER_INFO(_T("The service '%s' was successfully installed"), config->name);
 	}
 
 	if (service)
@@ -818,7 +820,140 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 		CloseServiceHandle(manager);
 	}
 
-	
+	return rc;
+}
+
+int wrapper_service_open(SC_HANDLE* service, const int desired_access, const SC_HANDLE manager,
+                         wrapper_config_t* config, wrapper_error_t** error)
+{
+	int rc = 1;
+	*service = OpenService(manager, config->name, desired_access);
+	if (*service == NULL)
+	{
+		if (error)
+		{
+			*error = wrapper_error_from_system(GetLastError(), _T("Failed to open service '%s'"), config->name);
+		}
+		rc = 0;
+	}
+	return rc;
+}
+
+int wrapper_service_get_config(LPQUERY_SERVICE_CONFIG* service_config,
+                               const SC_HANDLE service,
+                               wrapper_config_t* config,
+                               wrapper_error_t** error)
+{
+	int rc = 1;
+	DWORD bytes_needed = 0;
+	DWORD buffer_size = 0;
+	DWORD last_error = 0;
+	*service_config = NULL;
+
+	if (rc)
+	{
+		if (!QueryServiceConfig(
+			service,
+			NULL,
+			0,
+			&bytes_needed))
+		{
+			last_error = GetLastError();
+			if (ERROR_INSUFFICIENT_BUFFER == last_error)
+			{
+				buffer_size = bytes_needed;
+				*service_config = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LMEM_FIXED, buffer_size);
+			}
+			else
+			{
+				if (error)
+				{
+					*error = wrapper_error_from_system(last_error, _T("Failed to query the configuration of service '%s'"),
+					                                   config->name);
+				}
+				rc = 0;
+			}
+		}
+	}
+
+	if (rc)
+	{
+		if (!QueryServiceConfig(
+			service,
+			*service_config,
+			buffer_size,
+			&bytes_needed))
+		{
+			if (error)
+			{
+				*error = wrapper_error_from_system(last_error, _T("Failed to query the configuration of service '%s'"),
+				                                   config->name);
+			}
+			rc = 0;
+		}
+	}
+
+	if (!rc)
+	{
+		LocalFree(*service_config);
+		*service_config = NULL;
+	}
+
+	return rc;
+}
+
+int wrapper_service_get_description(LPSERVICE_DESCRIPTION* service_description, SC_HANDLE service,
+                                    wrapper_config_t* config,
+                                    wrapper_error_t** error)
+{
+	int rc = 1;
+	DWORD bytes_needed = 0;
+	DWORD buffer_size = 0;
+	DWORD last_error = 0;
+	*service_description = NULL;
+
+	if (rc)
+	{
+		if (!QueryServiceConfig2(service, SERVICE_CONFIG_DESCRIPTION, NULL, 0, &bytes_needed))
+		{
+			last_error = GetLastError();
+			if (ERROR_INSUFFICIENT_BUFFER != last_error)
+			{
+				if (error)
+				{
+					*error = wrapper_error_from_system(last_error, _T("Failed to query the description of service '%s'"),
+					                                   config->name);
+				}
+				rc = 0;
+			}
+		}
+	}
+
+	if (rc)
+	{
+		buffer_size = bytes_needed;
+		*service_description = (LPSERVICE_DESCRIPTION)LocalAlloc(LMEM_FIXED, buffer_size);
+	}
+
+	if (rc)
+	{
+		if (!QueryServiceConfig2(service, SERVICE_CONFIG_DESCRIPTION, (LPBYTE)*service_description, buffer_size,
+		                         &bytes_needed))
+		{
+			if (error)
+			{
+				*error = wrapper_error_from_system(last_error, _T("Failed to query the description of service '%s'"), config->name);
+			}
+			rc = 0;
+		}
+	}
+
+	if (!rc)
+	{
+		LocalFree(*service_description);
+		*service_description = NULL;
+	}
+
 	return rc;
 }
 
@@ -838,123 +973,58 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 	SC_HANDLE service = NULL;
 	LPQUERY_SERVICE_CONFIG service_config = NULL;
 	LPSERVICE_DESCRIPTION service_description = NULL;
-	DWORD dwBytesNeeded = 0;
-	DWORD cbBufSize = 0;
-	DWORD dwError = 0;
 
-	manager = OpenSCManager(
-		NULL, 
-		NULL,  
-		SC_MANAGER_ALL_ACCESS);  
+	int rc = 1;
 
-	if (NULL == manager)
+	if (rc)
 	{
-		printf("OpenSCManager failed (%d)\n", GetLastError());
-		return;
+		rc = wrapper_service_open_manager(&manager, error);
 	}
 
-	// Get a handle to the service.
-
-	service = OpenService(
-		manager, // SCM database 
-		config->name, // name of service 
-		SERVICE_QUERY_CONFIG); // need query config access 
-
-	if (service == NULL)
+	if (rc)
 	{
-		printf("OpenService failed (%d)\n", GetLastError());
-		CloseServiceHandle(manager);
-		return;
+		rc = wrapper_service_open(&service, SERVICE_QUERY_CONFIG, manager, config, error);
 	}
 
-	// Get the configuration information.
-
-	if (!QueryServiceConfig(
-		service,
-		NULL,
-		0,
-		&dwBytesNeeded))
+	if (rc)
 	{
-		dwError = GetLastError();
-		if (ERROR_INSUFFICIENT_BUFFER == dwError)
-		{
-			cbBufSize = dwBytesNeeded;
-			service_config = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LMEM_FIXED, cbBufSize);
-		}
-		else
-		{
-			printf("QueryServiceConfig failed (%d)", dwError);
-			goto cleanup;
-		}
+		rc = wrapper_service_get_config(&service_config, service, config, error);
 	}
 
-	if (!QueryServiceConfig(
-		service,
-		service_config,
-		cbBufSize,
-		&dwBytesNeeded))
+	if (rc)
 	{
-		printf("QueryServiceConfig failed (%d)", GetLastError());
-		goto cleanup;
+		rc = wrapper_service_get_description(&service_description, service, config, error);
 	}
 
-	if (!QueryServiceConfig2(
-		service,
-		SERVICE_CONFIG_DESCRIPTION,
-		NULL,
-		0,
-		&dwBytesNeeded))
+	if (rc)
 	{
-		dwError = GetLastError();
-		if (ERROR_INSUFFICIENT_BUFFER == dwError)
-		{
-			cbBufSize = dwBytesNeeded;
-			service_description = (LPSERVICE_DESCRIPTION)LocalAlloc(LMEM_FIXED, cbBufSize);
-		}
-		else
-		{
-			printf("QueryServiceConfig2 failed (%d)", dwError);
-			goto cleanup;
-		}
+		WRAPPER_INFO(TEXT("Configuration:"));
+		WRAPPER_INFO(TEXT("  %-20s: %s"), _T("Name"), config->name);
+		WRAPPER_INFO(TEXT("  %-20s: %s"), _T("Description"), service_description->lpDescription ? service_description->
+			lpDescription : _T(""));
+		WRAPPER_INFO(TEXT("  %-20s: %-2d (0x%08x)"), _T("Service Type"), service_config->dwServiceType, service_config->
+			dwServiceType);
+		WRAPPER_INFO(TEXT("  %-20s: %-2d (0x%08x)"), _T("Start Type"), service_config->dwStartType, service_config->
+			dwStartType);
+		WRAPPER_INFO(TEXT("  %-20s: %-2d (0x%08x)"), _T("Error Control"), service_config->dwErrorControl, service_config->
+			dwErrorControl);
+		WRAPPER_INFO(TEXT("  %-20s: %s"), _T("Path"), service_config->lpBinaryPathName);
+		WRAPPER_INFO(TEXT("  %-20s: %s"), _T("Account"), service_config->lpServiceStartName);
+		WRAPPER_INFO(TEXT("  %-20s: %s"), _T("Load Order Group"), service_config->lpLoadOrderGroup);
+		WRAPPER_INFO(TEXT("  %-20s: %-2d (0x%08x)"), _T("Tag ID"), service_config->dwTagId, service_config->dwTagId);
+		WRAPPER_INFO(TEXT("  %-20s: %s"), _T("Dependencies"), service_config->lpDependencies);
 	}
-
-	if (!QueryServiceConfig2(
-		service,
-		SERVICE_CONFIG_DESCRIPTION,
-		(LPBYTE)service_description,
-		cbBufSize,
-		&dwBytesNeeded))
-	{
-		printf("QueryServiceConfig2 failed (%d)", GetLastError());
-		goto cleanup;
-	}
-
-	// Print the configuration information.
-
-	_tprintf(TEXT("%s configuration: \n"), config->name);
-	_tprintf(TEXT("  Type: 0x%x\n"), service_config->dwServiceType);
-	_tprintf(TEXT("  Start Type: 0x%x\n"), service_config->dwStartType);
-	_tprintf(TEXT("  Error Control: 0x%x\n"), service_config->dwErrorControl);
-	_tprintf(TEXT("  Binary path: %s\n"), service_config->lpBinaryPathName);
-	_tprintf(TEXT("  Account: %s\n"), service_config->lpServiceStartName);
-
-	if (service_description->lpDescription != NULL && lstrcmp(service_description->lpDescription, TEXT("")) != 0)
-		_tprintf(TEXT("  Description: %s\n"), service_description->lpDescription);
-	if (service_config->lpLoadOrderGroup != NULL && lstrcmp(service_config->lpLoadOrderGroup, TEXT("")) != 0)
-		_tprintf(TEXT("  Load order group: %s\n"), service_config->lpLoadOrderGroup);
-	if (service_config->dwTagId != 0)
-		_tprintf(TEXT("  Tag ID: %d\n"), service_config->dwTagId);
-	if (service_config->lpDependencies != NULL && lstrcmp(service_config->lpDependencies, TEXT("")) != 0)
-		_tprintf(TEXT("  Dependencies: %s\n"), service_config->lpDependencies);
 
 	LocalFree(service_config);
 	LocalFree(service_description);
 
-cleanup:
-	CloseServiceHandle(service);
-	CloseServiceHandle(manager);
+	if (service)
+		CloseServiceHandle(service);
+	
+	if (manager)
+		CloseServiceHandle(manager);
 
-	return 1;
+	return rc;
 }
 
 //
@@ -1149,7 +1219,9 @@ int wrapper_service_update(wrapper_config_t* config, wrapper_error_t** error)
 		printf("ChangeServiceConfig2 failed\n");
 	}
 	else
+	{
 		printf("Service description updated successfully.\n");
+	}
 
 	CloseServiceHandle(schService);
 	CloseServiceHandle(schSCManager);
