@@ -4,6 +4,8 @@
 
 #define ERRMSGBUFFERSIZE 256
 
+
+
 HLOCAL wrapper_error_format_message(DWORD dwErrorMsgId)
 {
 	DWORD rc = 0;
@@ -60,6 +62,12 @@ HLOCAL wrapper_error_format_message(DWORD dwErrorMsgId)
 			NULL
 		);
 	}
+
+	if (buffer)
+	{
+		wrapper_string_trim_right(buffer);
+	}
+
 	return buffer;
 }
 

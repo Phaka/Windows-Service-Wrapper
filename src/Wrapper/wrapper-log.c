@@ -71,29 +71,7 @@ void wrapper_log_console_handler(wrapper_log_level_t log_level,
 	const TCHAR *message,
 	void *user_data)
 {
-	FILETIME ft;
-	struct timeval tv;
-	struct tm tt;
-	time_t t;
 	FILE *stream;
-	TCHAR nowstr[32];
-	int pid;
-
-	GetSystemTimeAsFileTime(&ft);
-	unsigned __int64 tmpres = 0;
-	tmpres |= ft.dwHighDateTime;
-	tmpres <<= 32;
-	tmpres |= ft.dwLowDateTime;
-	/*converting file time to unix epoch*/
-	tmpres -= DELTA_EPOCH_IN_MICROSECS;
-	tmpres /= 10;  /*convert into microseconds*/
-	tv.tv_sec = (long)(tmpres / 1000000UL);
-	tv.tv_usec = (long)(tmpres % 1000000UL);
-	t = tv.tv_sec;
-
-	localtime_s(&tt, &t);
-	strftime(nowstr, sizeof nowstr, "%Y/%m/%d %H:%M:%S", &tt);
-
 	switch (log_level) {
 	case WRAPPER_LOG_LEVEL_ERROR:
 	case WRAPPER_LOG_LEVEL_CRITICAL:
@@ -108,16 +86,14 @@ void wrapper_log_console_handler(wrapper_log_level_t log_level,
 		stream = stdout;
 	}
 
-	pid = (int)GetProcessId(NULL);
-
-	_ftprintf(stream,
-		"%s.%04ld: [%5d]: %8s: %12s: %s\n",
-		nowstr,
-		tv.tv_usec / 1000L,
-		pid,
-		wrapper_log_level_str(log_level),
-		log_domain,
-		message);
+	if (log_level != WRAPPER_LOG_LEVEL_INFO)
+	{
+		_ftprintf(stream, _T("%s: %s\n"), wrapper_log_level_str(log_level), message);
+	}
+	else 
+	{
+		_ftprintf(stream, _T("%s\n"), message);
+	}
 }
 
 

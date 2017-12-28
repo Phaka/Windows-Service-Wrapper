@@ -6,6 +6,7 @@
 #include "wrapper-memory.h"
 #include "wrapper-log.h"
 #include "service_config.h"
+#include "wrapper-string.h"
 
 VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv);
 VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl);
@@ -15,7 +16,7 @@ int wrapper_service_report_status(DWORD dwCurrentState, DWORD dwWin32ExitCode, D
                                   wrapper_config_t* config, wrapper_error_t** error);
 
 
-SERVICE_STATUS_HANDLE status_handle;
+SERVICE_STATUS_HANDLE status_handle; // TODO: Move to methods and pass around like variables
 TCHAR* stop_event_name = _T("PHAKA_WINDOWS_SERVICE_STOP_EVENT");
 
 const TCHAR* wrapper_service_get_status_text(const unsigned long status)
@@ -579,26 +580,98 @@ VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl)
 	}
 }
 
+int wrapper_log_get_path(TCHAR* destination, const size_t size, wrapper_config_t* config, wrapper_error_t** error)
+{
+	HRESULT hr = S_OK;
+	if(!GetModuleFileName(NULL, destination, size))
+	{
+		hr = HRESULT_FROM_WIN32(GetLastError());
+		if (error)
+		{
+			*error = wrapper_error_from_hresult(hr, _T("Failed to get the path of the current process."));
+		}
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		PathCchRenameExtension(destination, size, _T(".log"));
+	}
+
+	if (FAILED(hr))
+	{
+		return 0;
+	}
+
+	return 1;
+}
+
 int wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
 {
-	TCHAR module_path[_MAX_PATH];
-	GetModuleFileName(NULL, module_path, _MAX_PATH);
-	PathCchRenameExtension(module_path, sizeof module_path / sizeof module_path[0], _T(".log"));
-	wrapper_log_set_handler(wrapper_log_file_handler, module_path);
+	HRESULT hr = S_OK;
+	TCHAR* log_path = NULL;
 
-	WRAPPER_INFO(_T("Starting Service"));
-	SERVICE_TABLE_ENTRY DispatchTable[] =
+	if (SUCCEEDED(hr))
 	{
-		{config->name, (LPSERVICE_MAIN_FUNCTION)wrapper_service_main},
-		{NULL, NULL}
-	};
-
-	if (!StartServiceCtrlDispatcher(DispatchTable))
-	{
-		WRAPPER_ERROR(_T("Failed to start service"));
+		log_path = wrapper_allocate_string(MAX_PATH);
+		if (!log_path)
+		{
+			hr = E_OUTOFMEMORY;
+		}
 	}
-	WRAPPER_INFO(_T("Done"));
 
+	if (SUCCEEDED(hr))
+	{
+		if (!wrapper_log_get_path(log_path, _MAX_PATH, config, error))
+		{
+			hr = E_FAIL;
+		}
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		wrapper_log_set_handler(wrapper_log_file_handler, log_path);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		WRAPPER_INFO(_T("Starting Service"));
+		SERVICE_TABLE_ENTRY DispatchTable[] =
+		{
+			{config->name, (LPSERVICE_MAIN_FUNCTION)wrapper_service_main},
+			{NULL, NULL}
+		};
+
+		if (!StartServiceCtrlDispatcher(DispatchTable))
+		{
+			hr = E_FAIL;
+			if (error)
+			{
+				*error = wrapper_error_from_hresult(hr, _T("Failed to start the service '%s'."), config->name);
+			}
+		}
+		else 
+		{
+			WRAPPER_INFO(_T("Done"));
+		}
+	}
+
+	if (FAILED(hr))
+	{
+		return 0;
+	}
+	return 1;
+}
+
+int wrapper_get_current_process_filename(TCHAR* buffer, size_t size, wrapper_config_t* config, wrapper_error_t** error)
+{
+	if (!GetModuleFileName(NULL, buffer, size))
+	{
+		if (error)
+		{
+			*error = wrapper_error_from_system(GetLastError(), _T("Unable to get the filename of the current process"));
+		}
+		return 0;
+	}
 	return 1;
 }
 
@@ -614,58 +687,116 @@ int wrapper_service_run(wrapper_config_t* config, wrapper_error_t** error)
 //
 int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 {
-	SC_HANDLE schSCManager;
-	SC_HANDLE schService;
-	TCHAR szPath[MAX_PATH];
+	int rc = 1;
+	SC_HANDLE service = NULL;
+	SC_HANDLE manager = NULL;
+	TCHAR* path = NULL;
+	TCHAR* service_name = NULL;
+	TCHAR* display_name = NULL;
 
-	if (!GetModuleFileName(NULL, szPath, MAX_PATH))
+	if (rc)
 	{
-		printf("Cannot install service (%d)\n", GetLastError());
-		return;
+		rc = wrapper_string_duplicate(&service_name, config->name, error);
+	}
+	
+	
+	if (rc)
+	{
+		if (0 == _tcslen(config->title))
+		{
+			rc = wrapper_string_duplicate(&display_name, config->name, error);
+		}
+		else
+		{
+			rc = wrapper_string_duplicate(&display_name, config->title, error);
+		}
 	}
 
-	// Get a handle to the SCM database. 
 
-	schSCManager = OpenSCManager(
-		NULL, // local computer
-		NULL, // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS); // full access rights 
-
-	if (NULL == schSCManager)
+	if (rc)
 	{
-		printf("OpenSCManager failed (%d)\n", GetLastError());
-		return;
+		path = wrapper_allocate_string(_MAX_PATH);
+		if (!path)
+		{
+			rc = 0;
+			if (error)
+			{
+				*error = wrapper_error_from_system(ERROR_OUTOFMEMORY, _T("Unable to get the filename of the current process"));
+			}
+		}
 	}
 
-	// Create the service
-
-	schService = CreateService(
-		schSCManager, // SCM database 
-		config->name, // name of service 
-		config->title, // service name to display 
-		SERVICE_ALL_ACCESS, // desired access 
-		SERVICE_WIN32_OWN_PROCESS, // service type 
-		SERVICE_DEMAND_START, // start type 
-		SERVICE_ERROR_NORMAL, // error control type 
-		szPath, // path to service's binary 
-		NULL, // no load ordering group 
-		NULL, // no tag identifier 
-		NULL, // no dependencies 
-		NULL, // LocalSystem account 
-		NULL); // no password 
-
-	if (schService == NULL)
+	if (rc)
 	{
-		printf("CreateService failed (%d)\n", GetLastError());
-		CloseServiceHandle(schSCManager);
-		return;
+		rc = wrapper_get_current_process_filename(path, _MAX_PATH, config, error);
 	}
-	printf("Service installed successfully\n");
 
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
+	if (rc)
+	{
+		manager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+		if (NULL == manager)
+		{
+			rc = 0;
+			if (error)
+			{
+				*error = wrapper_error_from_system(GetLastError(), _T("Unable to get the filename of the current process"));
+			}
+		}
+	}
 
-	return 1;
+	if (rc)
+	{
+	
+		void* load_order_group = NULL;
+		void* tag_id = NULL;
+		void* dependencies = NULL;
+		void* username = NULL;
+		void* password = NULL;
+		const long desired_access = SERVICE_ALL_ACCESS;
+		const int service_type = SERVICE_WIN32_OWN_PROCESS;
+		const int start_type = SERVICE_DEMAND_START;
+		const int error_control = SERVICE_ERROR_NORMAL;
+
+		service = CreateService(
+			manager,  
+			service_name,  
+			display_name,
+			desired_access,
+			service_type,
+			start_type,
+			error_control,  
+			path,
+			load_order_group,
+			tag_id,
+			dependencies,
+			username,
+			password);  
+
+		if (service == NULL)
+		{
+			if (error)
+			{
+				*error = wrapper_error_from_system(GetLastError(), _T("Failed to create service '%s' (%s)"), service_name, display_name);
+			}
+			rc = 0;
+		}
+		else {
+			WRAPPER_INFO(_T("The service '%s' (%s) was successfully installed"), service_name, display_name);
+		}
+	}
+
+	if (service)
+	{
+		CloseServiceHandle(service);
+	}
+
+	if (manager)
+	{
+		CloseServiceHandle(manager);
+	}
+
+	wrapper_free(path);
+	return rc;
 }
 
 //

@@ -167,6 +167,7 @@
     <ClInclude Include="wrapper-help.h" />
     <ClInclude Include="wrapper-log.h" />
     <ClInclude Include="wrapper-memory.h" />
+    <ClInclude Include="wrapper-string.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="service.c" />
@@ -184,6 +185,7 @@
     <ClCompile Include="wrapper-help.c" />
     <ClCompile Include="wrapper-log.c" />
     <ClCompile Include="wrapper-memory.c" />
+    <ClCompile Include="wrapper-string.c" />
   </ItemGroup>
   <ItemGroup>
     <None Include="config.example" />
