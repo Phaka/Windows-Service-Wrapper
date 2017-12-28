@@ -1231,16 +1231,6 @@ int wrapper_service_delete2(SC_HANDLE service, wrapper_config_t* config, wrapper
 	return rc;
 }
 
-//
-// Purpose: 
-//   Deletes a service from the SCM database
-//
-// Parameters:
-//   None
-// 
-// Return value:
-//   None
-//
 int do_delete(wrapper_config_t* config, wrapper_error_t** error)
 {
 	SC_HANDLE manager = NULL;
@@ -1254,7 +1244,7 @@ int do_delete(wrapper_config_t* config, wrapper_error_t** error)
 
 	if (rc)
 	{
-		rc = wrapper_service_open(&service, SERVICE_CHANGE_CONFIG, manager, config, error);
+		rc = wrapper_service_open(&service, SERVICE_ALL_ACCESS, manager, config, error);
 	}
 
 	if (rc)
