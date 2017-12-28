@@ -67,7 +67,7 @@ If a title is specified, it must be less than 260 characters and may not only co
 
 ### Description 
 
-The description property provides of the service. This is particulary useful for humans, asset management systems, and auditors. If the description property is empty, the service will be removed if one was specified before. Good examples of a description would be `Provides secure storage and retrieval of hello messages to users and applications.`.   
+Represents the description of the service. This is particulary useful for humans, asset management systems, and auditors. If the description property is empty, the service will be removed if one was specified before. Good examples of a description would be `Provides secure storage and retrieval of hello messages to users and applications.`.   
 
 ## Usage
 

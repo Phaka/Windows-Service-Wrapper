@@ -64,7 +64,7 @@ We use [SemVer](http://semver.org/) for versioning. For the versions available, 
 
 ## Authors
 
-* **Werner Strydom** - [WernerStrydom](https://github.com/WernerStrydom)
+* [WernerStrydom](https://github.com/WernerStrydom) 
 
 ## License
 
