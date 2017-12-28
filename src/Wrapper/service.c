@@ -675,22 +675,26 @@ int wrapper_get_current_process_filename(TCHAR* buffer, size_t size, wrapper_con
 	return 1;
 }
 
-//
-// Purpose: 
-//   Installs a service in the SCM database
-//
-// Parameters:
-//   None
-// 
-// Return value:
-//   None
-//
-int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
+int wrapper_service_open_manager(SC_HANDLE* manager, wrapper_error_t** error)
 {
 	int rc = 1;
-	SC_HANDLE service = NULL;
-	SC_HANDLE manager = NULL;
-	TCHAR* path = NULL;
+	*manager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
+	if (NULL == *manager)
+	{
+		rc = 0;
+		if (error)
+		{
+			*error = wrapper_error_from_system(GetLastError(), _T("Unable to get the filename of the current process"));
+		}
+	}
+	return rc;
+}
+
+int wrapper_service_create(SC_HANDLE* service, const SC_HANDLE manager, const wrapper_config_t* config,
+                           wrapper_error_t** error)
+{
+	int rc = 1;
+	TCHAR *path = NULL;
 	TCHAR* service_name = NULL;
 	TCHAR* display_name = NULL;
 
@@ -698,8 +702,7 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 	{
 		rc = wrapper_string_duplicate(&service_name, config->name, error);
 	}
-	
-	
+
 	if (rc)
 	{
 		if (0 == _tcslen(config->title))
@@ -733,20 +736,6 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 
 	if (rc)
 	{
-		manager = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-		if (NULL == manager)
-		{
-			rc = 0;
-			if (error)
-			{
-				*error = wrapper_error_from_system(GetLastError(), _T("Unable to get the filename of the current process"));
-			}
-		}
-	}
-
-	if (rc)
-	{
-	
 		void* load_order_group = NULL;
 		void* tag_id = NULL;
 		void* dependencies = NULL;
@@ -757,7 +746,7 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 		const int start_type = SERVICE_DEMAND_START;
 		const int error_control = SERVICE_ERROR_NORMAL;
 
-		service = CreateService(
+		*service = CreateService(
 			manager,  
 			service_name,  
 			display_name,
@@ -772,7 +761,7 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 			username,
 			password);  
 
-		if (service == NULL)
+		if (*service == NULL)
 		{
 			if (error)
 			{
@@ -780,8 +769,42 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 			}
 			rc = 0;
 		}
-		else {
-			WRAPPER_INFO(_T("The service '%s' (%s) was successfully installed"), service_name, display_name);
+	}
+
+	wrapper_free(service_name);
+	wrapper_free(display_name);
+	wrapper_free(path);
+
+	return rc;
+}
+
+//
+// Purpose: 
+//   Installs a service in the SCM database
+//
+// Parameters:
+//   None
+// 
+// Return value:
+//   None
+//
+int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
+{
+	int rc = 1;
+	SC_HANDLE service = NULL;
+	SC_HANDLE manager = NULL;
+
+	if (rc)
+	{
+		rc = wrapper_service_open_manager(&manager, error);
+	}
+
+	if (rc)
+	{
+		rc = wrapper_service_create(&service, manager, config, error);
+		if(rc) 
+		{
+			WRAPPER_INFO(_T("The service '%s' was successfully installed"), config->name);
 		}
 	}
 
@@ -795,7 +818,7 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 		CloseServiceHandle(manager);
 	}
 
-	wrapper_free(path);
+	
 	return rc;
 }
 
@@ -811,20 +834,20 @@ int wrapper_service_install(wrapper_config_t* config, wrapper_error_t** error)
 //
 int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 {
-	SC_HANDLE schSCManager = NULL;
-	SC_HANDLE schService = NULL;
-	LPQUERY_SERVICE_CONFIG lpsc = NULL;
-	LPSERVICE_DESCRIPTION lpsd = NULL;
-	DWORD dwBytesNeeded = 0, cbBufSize = 0, dwError = 0;
+	SC_HANDLE manager = NULL;
+	SC_HANDLE service = NULL;
+	LPQUERY_SERVICE_CONFIG service_config = NULL;
+	LPSERVICE_DESCRIPTION service_description = NULL;
+	DWORD dwBytesNeeded = 0;
+	DWORD cbBufSize = 0;
+	DWORD dwError = 0;
 
-	// Get a handle to the SCM database. 
+	manager = OpenSCManager(
+		NULL, 
+		NULL,  
+		SC_MANAGER_ALL_ACCESS);  
 
-	schSCManager = OpenSCManager(
-		NULL, // local computer
-		NULL, // ServicesActive database 
-		SC_MANAGER_ALL_ACCESS); // full access rights 
-
-	if (NULL == schSCManager)
+	if (NULL == manager)
 	{
 		printf("OpenSCManager failed (%d)\n", GetLastError());
 		return;
@@ -832,22 +855,22 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 
 	// Get a handle to the service.
 
-	schService = OpenService(
-		schSCManager, // SCM database 
+	service = OpenService(
+		manager, // SCM database 
 		config->name, // name of service 
 		SERVICE_QUERY_CONFIG); // need query config access 
 
-	if (schService == NULL)
+	if (service == NULL)
 	{
 		printf("OpenService failed (%d)\n", GetLastError());
-		CloseServiceHandle(schSCManager);
+		CloseServiceHandle(manager);
 		return;
 	}
 
 	// Get the configuration information.
 
 	if (!QueryServiceConfig(
-		schService,
+		service,
 		NULL,
 		0,
 		&dwBytesNeeded))
@@ -856,7 +879,7 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 		if (ERROR_INSUFFICIENT_BUFFER == dwError)
 		{
 			cbBufSize = dwBytesNeeded;
-			lpsc = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LMEM_FIXED, cbBufSize);
+			service_config = (LPQUERY_SERVICE_CONFIG)LocalAlloc(LMEM_FIXED, cbBufSize);
 		}
 		else
 		{
@@ -866,8 +889,8 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 	}
 
 	if (!QueryServiceConfig(
-		schService,
-		lpsc,
+		service,
+		service_config,
 		cbBufSize,
 		&dwBytesNeeded))
 	{
@@ -876,7 +899,7 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 	}
 
 	if (!QueryServiceConfig2(
-		schService,
+		service,
 		SERVICE_CONFIG_DESCRIPTION,
 		NULL,
 		0,
@@ -886,7 +909,7 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 		if (ERROR_INSUFFICIENT_BUFFER == dwError)
 		{
 			cbBufSize = dwBytesNeeded;
-			lpsd = (LPSERVICE_DESCRIPTION)LocalAlloc(LMEM_FIXED, cbBufSize);
+			service_description = (LPSERVICE_DESCRIPTION)LocalAlloc(LMEM_FIXED, cbBufSize);
 		}
 		else
 		{
@@ -896,9 +919,9 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 	}
 
 	if (!QueryServiceConfig2(
-		schService,
+		service,
 		SERVICE_CONFIG_DESCRIPTION,
-		(LPBYTE)lpsd,
+		(LPBYTE)service_description,
 		cbBufSize,
 		&dwBytesNeeded))
 	{
@@ -909,27 +932,27 @@ int wrapper_service_query(wrapper_config_t* config, wrapper_error_t** error)
 	// Print the configuration information.
 
 	_tprintf(TEXT("%s configuration: \n"), config->name);
-	_tprintf(TEXT("  Type: 0x%x\n"), lpsc->dwServiceType);
-	_tprintf(TEXT("  Start Type: 0x%x\n"), lpsc->dwStartType);
-	_tprintf(TEXT("  Error Control: 0x%x\n"), lpsc->dwErrorControl);
-	_tprintf(TEXT("  Binary path: %s\n"), lpsc->lpBinaryPathName);
-	_tprintf(TEXT("  Account: %s\n"), lpsc->lpServiceStartName);
+	_tprintf(TEXT("  Type: 0x%x\n"), service_config->dwServiceType);
+	_tprintf(TEXT("  Start Type: 0x%x\n"), service_config->dwStartType);
+	_tprintf(TEXT("  Error Control: 0x%x\n"), service_config->dwErrorControl);
+	_tprintf(TEXT("  Binary path: %s\n"), service_config->lpBinaryPathName);
+	_tprintf(TEXT("  Account: %s\n"), service_config->lpServiceStartName);
 
-	if (lpsd->lpDescription != NULL && lstrcmp(lpsd->lpDescription, TEXT("")) != 0)
-		_tprintf(TEXT("  Description: %s\n"), lpsd->lpDescription);
-	if (lpsc->lpLoadOrderGroup != NULL && lstrcmp(lpsc->lpLoadOrderGroup, TEXT("")) != 0)
-		_tprintf(TEXT("  Load order group: %s\n"), lpsc->lpLoadOrderGroup);
-	if (lpsc->dwTagId != 0)
-		_tprintf(TEXT("  Tag ID: %d\n"), lpsc->dwTagId);
-	if (lpsc->lpDependencies != NULL && lstrcmp(lpsc->lpDependencies, TEXT("")) != 0)
-		_tprintf(TEXT("  Dependencies: %s\n"), lpsc->lpDependencies);
+	if (service_description->lpDescription != NULL && lstrcmp(service_description->lpDescription, TEXT("")) != 0)
+		_tprintf(TEXT("  Description: %s\n"), service_description->lpDescription);
+	if (service_config->lpLoadOrderGroup != NULL && lstrcmp(service_config->lpLoadOrderGroup, TEXT("")) != 0)
+		_tprintf(TEXT("  Load order group: %s\n"), service_config->lpLoadOrderGroup);
+	if (service_config->dwTagId != 0)
+		_tprintf(TEXT("  Tag ID: %d\n"), service_config->dwTagId);
+	if (service_config->lpDependencies != NULL && lstrcmp(service_config->lpDependencies, TEXT("")) != 0)
+		_tprintf(TEXT("  Dependencies: %s\n"), service_config->lpDependencies);
 
-	LocalFree(lpsc);
-	LocalFree(lpsd);
+	LocalFree(service_config);
+	LocalFree(service_description);
 
 cleanup:
-	CloseServiceHandle(schService);
-	CloseServiceHandle(schSCManager);
+	CloseServiceHandle(service);
+	CloseServiceHandle(manager);
 
 	return 1;
 }
