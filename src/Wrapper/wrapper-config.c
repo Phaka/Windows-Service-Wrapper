@@ -44,7 +44,7 @@ int wrapper_config_get_path(TCHAR* path, const size_t size, wrapper_error_t** er
 	int rc = 1;
 	if (rc)
 	{
-		if (!GetModuleFileName(NULL, path, size))
+		if (!GetModuleFileName(NULL, path, (DWORD)size))
 		{
 			if (error)
 			{

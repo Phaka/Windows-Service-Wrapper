@@ -4,6 +4,8 @@
 #include "stdafx.h"
 #include "wrapper-error.h"
 #include "wrapper-log.h"
+#include "wrapper-memory.h"
+#include "wrapper-string.h"
 
 #define ERRMSGBUFFERSIZE 256
 
@@ -73,7 +75,6 @@ HLOCAL wrapper_error_format_message(DWORD dwErrorMsgId)
 	return buffer;
 }
 
-
 wrapper_error_t* wrapper_error_from_system(DWORD code, TCHAR* format, ...)
 {
 	va_list args;
@@ -81,13 +82,24 @@ wrapper_error_t* wrapper_error_from_system(DWORD code, TCHAR* format, ...)
 	error = LocalAlloc(LPTR, sizeof(wrapper_error_t));
 	if (error)
 	{
+		error->user_message = LocalAlloc(LPTR, 4096 * sizeof(TCHAR));
+		if (!error->user_message)
+		{
+			LocalFree(error);
+			error = NULL;
+		}
+	}
+
+	if (error)
+	{
 		error->code = HRESULT_FROM_WIN32(code);
 		error->message = wrapper_error_format_message(code);
-		error->user_message = LocalAlloc(LPTR, 4096 * sizeof(TCHAR));
+
 		va_start(args, format);
 		_vsntprintf_s(error->user_message, 4096, _TRUNCATE, format, args);
 		va_end(args);
 	}
+
 	return error;
 }
 
@@ -100,7 +112,7 @@ wrapper_error_t* wrapper_error_from_hresult(long code, TCHAR* format, ...)
 	{
 		error->code = code;
 		error->message = wrapper_error_format_message(code);
-		error->user_message = LocalAlloc(LPTR, 4096);
+		error->user_message = wrapper_allocate_string(4096);
 		va_start(args, format);
 		_vsntprintf_s(error->user_message, 4096, _TRUNCATE, format, args);
 		va_end(args);

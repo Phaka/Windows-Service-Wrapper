@@ -7,6 +7,7 @@
 #include "wrapper-log.h"
 #include "service_config.h"
 #include "wrapper-string.h"
+#include "wrapper-utils.h"
 
 VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv);
 VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl);
@@ -90,6 +91,9 @@ BOOL SendConsoleCtrlEvent(DWORD dwProcessId, DWORD dwCtrlEvent)
 //
 VOID WINAPI wrapper_service_main(DWORD dwArgc, LPTSTR* lpszArgv)
 {
+	UNUSED(dwArgc);
+	UNUSED(lpszArgv);
+
 	HRESULT hr = S_OK;
 	wrapper_error_t* error = NULL;
 	wrapper_config_t* config = NULL;
@@ -484,6 +488,8 @@ int wrapper_service_report_status(DWORD state,
                                   wrapper_config_t* config,
                                   wrapper_error_t** error)
 {
+	UNUSED(config);
+
 	static DWORD dwCheckPoint = 1;
 
 	SERVICE_STATUS service_status = {0};
@@ -582,8 +588,10 @@ VOID WINAPI wrapper_service_control_handler(DWORD dwCtrl)
 
 int wrapper_log_get_path(TCHAR* destination, const size_t size, wrapper_config_t* config, wrapper_error_t** error)
 {
+	UNUSED(config);
+
 	HRESULT hr = S_OK;
-	if (!GetModuleFileName(NULL, destination, size))
+	if (!GetModuleFileName(NULL, destination, (DWORD)size))
 	{
 		hr = HRESULT_FROM_WIN32(GetLastError());
 		if (error)
@@ -635,11 +643,21 @@ int do_run(wrapper_config_t* config, wrapper_error_t** error)
 	if (SUCCEEDED(hr))
 	{
 		WRAPPER_INFO(_T("Starting Service"));
+		
+#pragma warning( push )
+#pragma warning( disable: 4204 ) // nonstandard extension used: non-constant aggregate initializer
 		SERVICE_TABLE_ENTRY DispatchTable[] =
 		{
-			{config->name, (LPSERVICE_MAIN_FUNCTION)wrapper_service_main},
-			{NULL, NULL}
+			{
+				.lpServiceName = config->name,
+				.lpServiceProc = (LPSERVICE_MAIN_FUNCTION)wrapper_service_main
+			},
+			{
+				.lpServiceName = NULL,
+				.lpServiceProc = NULL
+			}
 		};
+#pragma warning( pop )
 
 		if (!StartServiceCtrlDispatcher(DispatchTable))
 		{
@@ -664,7 +682,9 @@ int do_run(wrapper_config_t* config, wrapper_error_t** error)
 
 int wrapper_get_current_process_filename(TCHAR* buffer, size_t size, wrapper_config_t* config, wrapper_error_t** error)
 {
-	if (!GetModuleFileName(NULL, buffer, size))
+	UNUSED(config);
+
+	if (!GetModuleFileName(NULL, buffer, (DWORD)size))
 	{
 		if (error)
 		{
@@ -914,7 +934,10 @@ int wrapper_service_get_description(LPSERVICE_DESCRIPTION* service_description, 
 
 	if (rc)
 	{
+#pragma warning( push )
+#pragma warning( disable: 28020 )
 		if (!QueryServiceConfig2(service, SERVICE_CONFIG_DESCRIPTION, NULL, 0, &bytes_needed))
+#pragma warning( pop )
 		{
 			last_error = GetLastError();
 			if (ERROR_INSUFFICIENT_BUFFER != last_error)
@@ -1332,7 +1355,7 @@ int wrapper_service_wait_to_stop(SC_HANDLE service, wrapper_config_t* config, wr
 {
 	int rc = 1;
 
-	SERVICE_STATUS_PROCESS status;
+	SERVICE_STATUS_PROCESS status = {0};
 	if (rc)
 	{
 		rc = wrapper_service_get_status(service, &status, config, error);
@@ -1348,7 +1371,7 @@ int wrapper_service_wait_to_stop(SC_HANDLE service, wrapper_config_t* config, wr
 	}
 
 	WRAPPER_INFO(_T("Waiting for the service '%s' to stop."), config->name);
-	DWORD start_tick_count = GetTickCount();
+	ULONGLONG start_tick_count = GetTickCount64();
 	DWORD old_check_point = status.dwCheckPoint;
 	while (rc && (status.dwCurrentState == SERVICE_STOP_PENDING))
 	{
@@ -1369,12 +1392,12 @@ int wrapper_service_wait_to_stop(SC_HANDLE service, wrapper_config_t* config, wr
 
 		if (status.dwCheckPoint > old_check_point)
 		{
-			start_tick_count = GetTickCount();
+			start_tick_count = GetTickCount64();
 			old_check_point = status.dwCheckPoint;
 			continue;
 		}
 		
-		if (GetTickCount() - start_tick_count > status.dwWaitHint)
+		if (GetTickCount64() - start_tick_count > status.dwWaitHint)
 		{
 			if (error)
 			{
@@ -1402,14 +1425,14 @@ int wrapper_service_start(const SC_HANDLE service, const wrapper_config_t* confi
 int wrapper_service_wait_to_start(const SC_HANDLE service, const wrapper_config_t* config, wrapper_error_t** error)
 {
 	int rc = 1;
-	SERVICE_STATUS_PROCESS status;
+	SERVICE_STATUS_PROCESS status = {0};
 
 	if (rc)
 	{
 		rc = wrapper_service_get_status(service, &status, config, error);
 	}
 
-	DWORD start_tick_count = GetTickCount();
+	ULONGLONG start_tick_count = GetTickCount64();
 	DWORD old_check_point = status.dwCheckPoint;
 	WRAPPER_INFO(_T("Waiting for service '%s' to start."), config->name);
 
@@ -1434,10 +1457,10 @@ int wrapper_service_wait_to_start(const SC_HANDLE service, const wrapper_config_
 		if (status.dwCheckPoint > old_check_point)
 		{
 			// Continue to wait and check.
-			start_tick_count = GetTickCount();
+			start_tick_count = GetTickCount64();
 			old_check_point = status.dwCheckPoint;
 		}
-		else if (GetTickCount() - start_tick_count > status.dwWaitHint)
+		else if (GetTickCount64() - start_tick_count > status.dwWaitHint)
 		{
 			if (error)
 			{
@@ -1535,14 +1558,14 @@ int wrapper_service_stop(SC_HANDLE service, wrapper_config_t* config, wrapper_er
 int wrapper_service_wait_to_stop2(SC_HANDLE service, wrapper_config_t* config, wrapper_error_t** error)
 {
 	int rc = 1;
-	SERVICE_STATUS_PROCESS status;
+	SERVICE_STATUS_PROCESS status = { 0 };
 
 	if (rc)
 	{
 		rc = wrapper_service_get_status(service, &status, config, error);
 	}
 
-	DWORD start_tick_count = GetTickCount();
+	ULONGLONG start_tick_count = GetTickCount64();
 	DWORD old_check_point = status.dwCheckPoint;
 	while (rc && (status.dwCurrentState != SERVICE_STOPPED))
 	{
@@ -1566,12 +1589,12 @@ int wrapper_service_wait_to_stop2(SC_HANDLE service, wrapper_config_t* config, w
 		if (status.dwCheckPoint > old_check_point)
 		{
 			// Continue to wait and check.
-			start_tick_count = GetTickCount();
+			start_tick_count = GetTickCount64();
 			old_check_point = status.dwCheckPoint;
 		}
 		else
 		{
-			if (GetTickCount() - start_tick_count > status.dwWaitHint)
+			if (GetTickCount64() - start_tick_count > status.dwWaitHint)
 			{
 				if (error)
 				{

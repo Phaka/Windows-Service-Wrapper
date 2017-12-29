@@ -8,25 +8,25 @@
 
 void wrapper_string_trim_right(TCHAR* chars)
 {
-	for (int i = _tcslen(chars) - 1; i >= 0; i--)
+	for (size_t i = _tcslen(chars); i > 0; i--)
 	{
-		TCHAR c = chars[i];
+		TCHAR c = chars[i-1];
 		if (!_istspace(c))
 		{
 			return;
 		}
-		chars[i] = 0;
+		chars[i-1] = 0;
 	}
 }
 
-void wrapper_string_copy(TCHAR* destination, const int destination_max_size, TCHAR* source)
+void wrapper_string_copy(TCHAR* destination, const size_t destination_max_size, TCHAR* source)
 {
 	StringCbCopy(destination, destination_max_size * sizeof(TCHAR), source);
 }
 
 int wrapper_string_duplicate(TCHAR** result, TCHAR* source, wrapper_error_t** error)
 {
-	const int length = _tcslen(source) + 1;
+	const size_t length = _tcslen(source) + 1;
 	*result = wrapper_allocate_string(length);
 	if (!*result)
 	{

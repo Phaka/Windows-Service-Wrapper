@@ -5,8 +5,8 @@
 #include "wrapper-help.h"
 #include "wrapper-memory.h"
 
-int wrapper_command_get_executable_name(TCHAR* destination, size_t size, wrapper_error_t** error)
-{
+int wrapper_command_get_executable_name(TCHAR* destination, DWORD size, wrapper_error_t** error)
+{ 
 	if (!GetModuleFileName(NULL, destination, size))
 	{
 		if (error)

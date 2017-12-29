@@ -25,7 +25,7 @@ typedef struct wrapper_config_t
 wrapper_config_t* wrapper_config_alloc(void);
 void wrapper_config_free(wrapper_config_t* config);
 
-int wrapper_config_get_path(TCHAR* path, size_t size, wrapper_error_t** error);
+int wrapper_config_get_path(TCHAR* path, const size_t size, wrapper_error_t** error);
 int wrapper_config_read(TCHAR* path, wrapper_config_t* config, wrapper_error_t** error);
 int wrapper_config_read_string(
 	TCHAR* buffer,
